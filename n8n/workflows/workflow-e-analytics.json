@@ -1,0 +1,100 @@
+{
+  "name": "Workflow E — Analytics Synchronization",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "55 23 * * *"
+            }
+          ]
+        }
+      },
+      "id": "daily-analytics-trigger",
+      "name": "Daily at 11:55 PM IST",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.BACKEND_API_URL || 'http://localhost:5000' }}/api/analytics/overview?range=30d",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-n8n-secret",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET || 'your_secure_n8n_webhook_secret_key_here' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-analytics",
+      "name": "Fetch Latest Insights",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_API_URL || 'http://localhost:5000' }}/api/webhooks/n8n",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-n8n-secret",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET || 'your_secure_n8n_webhook_secret_key_here' }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"action\": \"analytics_synced\",\n  \"workflowName\": \"Workflow E — Analytics Synchronization\",\n  \"executionId\": \"{{ $execution.id }}\",\n  \"payload\": {\n    \"totalReach\": {{ $json.data.totals.reach || 0 }},\n    \"totalImpressions\": {{ $json.data.totals.impressions || 0 }}\n  }\n}",
+        "options": {}
+      },
+      "id": "record-analytics-run",
+      "name": "Record Analytics Sync",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [720, 300]
+    }
+  ],
+  "connections": {
+    "Daily at 11:55 PM IST": {
+      "main": [
+        [
+          {
+            "node": "Fetch Latest Insights",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Latest Insights": {
+      "main": [
+        [
+          {
+            "node": "Record Analytics Sync",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Kolkata"
+  }
+}

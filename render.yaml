@@ -1,0 +1,89 @@
+services:
+  # ----------------------------------------------------------------------------
+  # Backend Web Service (Node.js / Express API)
+  # ----------------------------------------------------------------------------
+  - type: web
+    name: learn-with-avee-backend
+    env: node
+    rootDir: backend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: APP_ENCRYPTION_KEY
+        generateValue: true
+      - key: FRONTEND_URL
+        sync: false
+      - key: BACKEND_URL
+        sync: false
+      - key: N8N_BASE_URL
+        sync: false
+      - key: N8N_WEBHOOK_SECRET
+        generateValue: true
+      - key: DEFAULT_AI_PROVIDER
+        value: gemini
+      - key: DEFAULT_AI_MODEL
+        value: gemini-2.5-flash
+
+  # ----------------------------------------------------------------------------
+  # n8n Automation Engine Web Service (Docker)
+  # ----------------------------------------------------------------------------
+  - type: web
+    name: learn-with-avee-n8n
+    env: docker
+    dockerfilePath: n8n/Dockerfile
+    plan: free
+    healthCheckPath: /healthz
+    envVars:
+      - key: N8N_PORT
+        value: 5678
+      - key: N8N_PROTOCOL
+        value: https
+      - key: DB_TYPE
+        value: postgresdb
+      - key: DB_POSTGRESDB_HOST
+        fromDatabase:
+          name: learn-with-avee-n8n-db
+          property: host
+      - key: DB_POSTGRESDB_PORT
+        fromDatabase:
+          name: learn-with-avee-n8n-db
+          property: port
+      - key: DB_POSTGRESDB_DATABASE
+        fromDatabase:
+          name: learn-with-avee-n8n-db
+          property: database
+      - key: DB_POSTGRESDB_USER
+        fromDatabase:
+          name: learn-with-avee-n8n-db
+          property: user
+      - key: DB_POSTGRESDB_PASSWORD
+        fromDatabase:
+          name: learn-with-avee-n8n-db
+          property: password
+      - key: N8N_ENCRYPTION_KEY
+        generateValue: true
+      - key: EXECUTIONS_DATA_PRUNE
+        value: "true"
+      - key: EXECUTIONS_DATA_MAX_AGE
+        value: "168"
+      - key: GENERIC_TIMEZONE
+        value: "Asia/Kolkata"
+
+# ------------------------------------------------------------------------------
+# Persistent PostgreSQL Database for n8n
+# ------------------------------------------------------------------------------
+databases:
+  - name: learn-with-avee-n8n-db
+    plan: free
+    databaseName: n8n
+    user: n8n

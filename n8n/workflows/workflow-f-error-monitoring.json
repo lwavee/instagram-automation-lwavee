@@ -1,0 +1,59 @@
+{
+  "name": "Workflow F — Error Monitoring & Auto-Retry",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "error-trigger",
+      "name": "On Workflow Error",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_API_URL || 'http://localhost:5000' }}/api/webhooks/n8n",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-n8n-secret",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET || 'your_secure_n8n_webhook_secret_key_here' }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"action\": \"workflow_error\",\n  \"workflowName\": \"{{ $json.workflow.name }}\",\n  \"executionId\": \"{{ $json.execution.id }}\",\n  \"error\": {\n    \"message\": \"{{ $json.execution.error.message }}\",\n    \"code\": \"{{ $json.execution.error.name }}\"\n  }\n}",
+        "options": {}
+      },
+      "id": "log-error-to-backend",
+      "name": "Log Error to Backend & Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 300]
+    }
+  ],
+  "connections": {
+    "On Workflow Error": {
+      "main": [
+        [
+          {
+            "node": "Log Error to Backend & Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Kolkata"
+  }
+}

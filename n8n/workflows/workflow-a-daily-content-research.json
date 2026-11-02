@@ -1,0 +1,144 @@
+{
+  "name": "Workflow A — Daily Content Research",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Daily at 8:00 AM IST",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "topic",
+              "value": "Artificial Intelligence"
+            },
+            {
+              "name": "keywords",
+              "value": "ChatGPT,Gemini,AI Tools,Automation,Productivity"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-topics",
+      "name": "Configure Target Topics",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_API_URL || 'http://localhost:5000' }}/api/research/discover",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-n8n-secret",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET || 'your_secure_n8n_webhook_secret_key_here' }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"topic\": \"{{ $json.topic }}\",\n  \"keywords\": [\"ChatGPT\", \"Gemini\", \"AI Tools\", \"Automation\"]\n}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "http-discover",
+      "name": "Discover Articles via Backend API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_API_URL || 'http://localhost:5000' }}/api/webhooks/n8n",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-n8n-secret",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET || 'your_secure_n8n_webhook_secret_key_here' }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"action\": \"research_complete\",\n  \"workflowName\": \"Workflow A — Daily Content Research\",\n  \"executionId\": \"{{ $execution.id }}\",\n  \"payload\": {\n    \"articlesFound\": {{ $json.data.articlesFound || 0 }}\n  }\n}",
+        "options": {}
+      },
+      "id": "notify-completion",
+      "name": "Record Execution in Backend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300]
+    }
+  ],
+  "connections": {
+    "Daily at 8:00 AM IST": {
+      "main": [
+        [
+          {
+            "node": "Configure Target Topics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configure Target Topics": {
+      "main": [
+        [
+          {
+            "node": "Discover Articles via Backend API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Discover Articles via Backend API": {
+      "main": [
+        [
+          {
+            "node": "Record Execution in Backend",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Kolkata",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true
+  }
+}

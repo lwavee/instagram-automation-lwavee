@@ -112,3 +112,4 @@ export const api = {
   markNotificationsRead: () => apiRequest("/api/settings/notifications/mark-read", { method: "PUT" }),
   getActivityLogs: () => apiRequest("/api/settings/activity-logs"),
 };
+

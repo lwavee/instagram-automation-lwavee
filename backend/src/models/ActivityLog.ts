@@ -58,3 +58,4 @@ const ActivityLogSchema = new Schema<IActivityLog>(
 ActivityLogSchema.index({ createdAt: -1 });
 
 export const ActivityLog = mongoose.model<IActivityLog>("ActivityLog", ActivityLogSchema);
+

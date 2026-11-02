@@ -76,3 +76,4 @@ const ContentScheduleSchema = new Schema<IContentSchedule>(
 ContentScheduleSchema.index({ status: 1, targetPublishTime: 1 });
 
 export const ContentSchedule = mongoose.model<IContentSchedule>("ContentSchedule", ContentScheduleSchema);
+

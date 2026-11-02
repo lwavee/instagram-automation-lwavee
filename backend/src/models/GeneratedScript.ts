@@ -138,3 +138,4 @@ const GeneratedScriptSchema = new Schema<IGeneratedScript>(
 GeneratedScriptSchema.index({ status: 1, createdAt: -1 });
 
 export const GeneratedScript = mongoose.model<IGeneratedScript>("GeneratedScript", GeneratedScriptSchema);
+

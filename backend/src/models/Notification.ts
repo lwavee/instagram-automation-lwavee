@@ -53,3 +53,4 @@ const NotificationSchema = new Schema<INotification>(
 NotificationSchema.index({ isRead: 1, createdAt: -1 });
 
 export const Notification = mongoose.model<INotification>("Notification", NotificationSchema);
+

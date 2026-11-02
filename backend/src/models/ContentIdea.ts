@@ -91,3 +91,4 @@ const ContentIdeaSchema = new Schema<IContentIdea>(
 ContentIdeaSchema.index({ status: 1, createdAt: -1 });
 
 export const ContentIdea = mongoose.model<IContentIdea>("ContentIdea", ContentIdeaSchema);
+

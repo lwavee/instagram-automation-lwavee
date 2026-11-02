@@ -95,3 +95,4 @@ const AnalyticsSnapshotSchema = new Schema<IAnalyticsSnapshot>(
 AnalyticsSnapshotSchema.index({ snapshotDate: -1 });
 
 export const AnalyticsSnapshot = mongoose.model<IAnalyticsSnapshot>("AnalyticsSnapshot", AnalyticsSnapshotSchema);
+

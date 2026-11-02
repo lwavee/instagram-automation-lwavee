@@ -79,3 +79,4 @@ const ResearchArticleSchema = new Schema<IResearchArticle>(
 ResearchArticleSchema.index({ topic: 1, createdAt: -1 });
 
 export const ResearchArticle = mongoose.model<IResearchArticle>("ResearchArticle", ResearchArticleSchema);
+

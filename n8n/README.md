@@ -51,3 +51,4 @@ Access the n8n UI at `http://localhost:5678`.
 2. Go to **Workflows** -> click **Add Workflow** -> click the **...** (Options menu) -> **Import from File**.
 3. Select any `.json` file from `n8n/workflows/`.
 4. Review node settings and click **Activate** (toggle in upper right corner).
+

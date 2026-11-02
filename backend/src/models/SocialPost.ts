@@ -139,3 +139,4 @@ const SocialPostSchema = new Schema<ISocialPost>(
 SocialPostSchema.index({ status: 1, scheduledPublishTime: 1 });
 
 export const SocialPost = mongoose.model<ISocialPost>("SocialPost", SocialPostSchema);
+

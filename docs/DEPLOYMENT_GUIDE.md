@@ -99,3 +99,4 @@ This document provides deployment instructions for the **Learn With Avee** AI In
 4. Configure Environment Variable:
    - `NEXT_PUBLIC_BACKEND_URL`: `https://<your-backend-app>.onrender.com`
 5. Click **Deploy**.
+

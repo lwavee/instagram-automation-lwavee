@@ -101,3 +101,4 @@ For successful Reel publishing, media must conform to:
 - **Frame Rate**: 23–60 fps
 - **Duration**: 3 seconds to 15 minutes (under 90 seconds recommended for Reels)
 - **File Size**: Max 100 MB via URL
+

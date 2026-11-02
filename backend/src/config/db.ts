@@ -23,3 +23,4 @@ mongoose.connection.on("disconnected", () => {
 mongoose.connection.on("error", (err) => {
   console.error("❌ MongoDB connection error:", err.message);
 });
+

@@ -109,3 +109,4 @@ const MediaAssetSchema = new Schema<IMediaAsset>(
 MediaAssetSchema.index({ fileType: 1, createdAt: -1 });
 
 export const MediaAsset = mongoose.model<IMediaAsset>("MediaAsset", MediaAssetSchema);
+

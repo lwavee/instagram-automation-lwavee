@@ -92,3 +92,4 @@ const AutomationExecutionSchema = new Schema<IAutomationExecution>(
 AutomationExecutionSchema.index({ workflowName: 1, createdAt: -1 });
 
 export const AutomationExecution = mongoose.model<IAutomationExecution>("AutomationExecution", AutomationExecutionSchema);
+

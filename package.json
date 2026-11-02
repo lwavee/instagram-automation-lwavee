@@ -30,6 +30,8 @@
     "learn-with-avee"
   ],
   "author": "Learn With Avee",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^10.0.6"
+  }
 }
-

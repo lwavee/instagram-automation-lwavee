@@ -75,7 +75,18 @@ export function createApp(): Application {
   const uploadsDir = path.resolve(process.cwd(), "uploads");
   app.use("/uploads", express.static(uploadsDir));
 
-  // 5. Health Check Endpoint
+  // 5. Root & Health Check Endpoints
+  app.get("/", (_req: Request, res: Response) => {
+    res.json({
+      brand: "Learn With Avee",
+      service: "AI-Powered Instagram Automation Backend API",
+      status: "online",
+      frontendDashboardUrl: env.FRONTEND_URL,
+      healthCheck: "/api/health",
+      message: "Backend API is running. To open the interactive SaaS dashboard, go to http://localhost:3000",
+    });
+  });
+
   app.get("/api/health", (_req: Request, res: Response) => {
     const isDbConnected = mongoose.connection.readyState === 1;
     res.json({

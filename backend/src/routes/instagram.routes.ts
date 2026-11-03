@@ -2,16 +2,19 @@ import { Router, Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { authenticateToken, AuthenticatedRequest } from "../middleware/auth";
 import { InstagramAccount } from "../models/InstagramAccount";
-import { InstagramService } from "../services/instagramService";
+import { User } from "../models/User";
+import { InstagramService, verifyOAuthState } from "../services/instagramService";
 import { encryptSensitive } from "../utils/encryption";
 import { ActivityLog } from "../models/ActivityLog";
+import { env } from "../config/env";
 
 const router = Router();
 
 // GET /api/instagram/auth-url
 router.get("/auth-url", authenticateToken, (req: AuthenticatedRequest, res: Response) => {
   try {
-    const url = InstagramService.getOAuthUrl();
+    const userId = req.user ? req.user._id.toString() : "";
+    const url = InstagramService.getOAuthUrl(userId);
     res.json({ success: true, data: { url } });
   } catch (err: any) {
     res.status(400).json({
@@ -24,13 +27,75 @@ router.get("/auth-url", authenticateToken, (req: AuthenticatedRequest, res: Resp
   }
 });
 
+// GET /api/instagram/callback (Browser callback from official Meta OAuth authorization)
+router.get("/callback", async (req: Request, res: Response): Promise<void> => {
+  const { code, state, error, error_description, error_reason } = req.query as Record<string, string>;
+
+  // 1. Check if user cancelled authorization or Meta returned an error
+  if (error || error_description) {
+    const errorMsg = error_description || error_reason || error || "Meta authorization was declined or cancelled.";
+    console.warn(`Meta OAuth error received: ${errorMsg}`);
+    res.redirect(`${env.FRONTEND_URL}/integrations?error=${encodeURIComponent(errorMsg)}`);
+    return;
+  }
+
+  // 2. Validate code and state parameters
+  if (!code || !state) {
+    res.redirect(
+      `${env.FRONTEND_URL}/integrations?error=${encodeURIComponent("Missing authorization code or state parameter.")}`
+    );
+    return;
+  }
+
+  // 3. Cryptographically verify state and retrieve userId
+  let userId = "";
+  try {
+    const statePayload = verifyOAuthState(state);
+    userId = statePayload.userId;
+  } catch (stateErr: any) {
+    console.error(`Invalid OAuth state: ${stateErr.message}`);
+    res.redirect(
+      `${env.FRONTEND_URL}/integrations?error=${encodeURIComponent(
+        "Security verification failed: invalid or expired OAuth state. Please try connecting again."
+      )}`
+    );
+    return;
+  }
+
+  // 4. Verify authentic user existence
+  const user = await User.findById(userId);
+  if (!user) {
+    res.redirect(
+      `${env.FRONTEND_URL}/integrations?error=${encodeURIComponent("Authenticated user not found. Please log in again.")}`
+    );
+    return;
+  }
+
+  // 5. Exchange code, verify eligibility, encrypt tokens and store account
+  try {
+    const account = await InstagramService.handleOAuthCallback(code, userId, undefined, user.email);
+    res.redirect(
+      `${env.FRONTEND_URL}/integrations?connected=true&username=${encodeURIComponent(account.username)}`
+    );
+  } catch (oauthErr: any) {
+    console.error("Instagram OAuth exchange failed:", oauthErr.message);
+    const friendlyMsg =
+      oauthErr.response?.data?.error?.message ||
+      oauthErr.message ||
+      "Failed to complete Instagram authorization exchange.";
+    res.redirect(`${env.FRONTEND_URL}/integrations?error=${encodeURIComponent(friendlyMsg)}`);
+  }
+});
+
 // GET /api/instagram/account
 router.get(
   "/account",
   authenticateToken,
   async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const account = await InstagramAccount.findOne({ isConnected: true });
+      const account = await InstagramAccount.findOne({
+        $or: [{ userId: req.user!._id, isConnected: true }, { isConnected: true }],
+      }).sort({ updatedAt: -1 });
 
       if (!account) {
         res.json({

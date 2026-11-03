@@ -18,6 +18,7 @@ const envSchema = z.object({
   DEFAULT_AI_MODEL: z.string().default("gemini-2.5-flash"),
   INSTAGRAM_APP_ID: z.string().optional(),
   INSTAGRAM_APP_SECRET: z.string().optional(),
+  INSTAGRAM_CONFIG_ID: z.string().optional(),
   INSTAGRAM_REDIRECT_URI: z.string().default("http://localhost:5000/api/instagram/callback"),
   MEDIA_STORAGE_PROVIDER: z.enum(["local", "cloudinary", "supabase"]).default("local"),
 });

@@ -21,6 +21,10 @@ const envSchema = z.object({
   INSTAGRAM_CONFIG_ID: z.string().optional(),
   INSTAGRAM_REDIRECT_URI: z.string().default("http://localhost:5000/api/instagram/callback"),
   MEDIA_STORAGE_PROVIDER: z.enum(["local", "cloudinary", "supabase"]).default("local"),
+  CLOUDINARY_URL: z.string().optional(),
+  CLOUDINARY_CLOUD_NAME: z.string().optional(),
+  CLOUDINARY_API_KEY: z.string().optional(),
+  CLOUDINARY_API_SECRET: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

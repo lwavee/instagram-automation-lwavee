@@ -29,6 +29,7 @@ export default function ScriptGeneratorPage() {
   const [reelTitle, setReelTitle] = useState("");
   const [language, setLanguage] = useState<"Hinglish" | "Hindi" | "English">("Hinglish");
   const [duration, setDuration] = useState(45);
+  const [aiProvider, setAiProvider] = useState<"gemini" | "openrouter">("gemini");
   const [customInstructions, setCustomInstructions] = useState("");
   const [activeScript, setActiveScript] = useState<any>(null);
   const [savedScripts, setSavedScripts] = useState<any[]>([]);
@@ -66,6 +67,8 @@ export default function ScriptGeneratorPage() {
         language,
         targetDurationSeconds: duration,
         customInstructions,
+        provider: aiProvider,
+        model: aiProvider === "gemini" ? "gemini-3.1-flash-lite" : "meta-llama/llama-3.3-70b-instruct",
       });
 
       if (res?.script) {
@@ -171,6 +174,36 @@ export default function ScriptGeneratorPage() {
                   placeholder="Leave empty for AI suggested title"
                   className="w-full px-3 py-2 text-xs rounded-lg bg-secondary/50 border border-border text-foreground focus:outline-none focus:ring-1 focus:ring-brand-500"
                 />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-foreground block mb-1">
+                  AI Engine:
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAiProvider("gemini")}
+                    className={`px-3 py-2 text-xs font-medium rounded-lg border text-center transition-all ${
+                      aiProvider === "gemini"
+                        ? "border-brand-500 bg-brand-500/10 text-brand-300 font-semibold shadow-sm"
+                        : "border-border bg-secondary/30 text-muted-foreground hover:bg-secondary/60"
+                    }`}
+                  >
+                    Google Gemini
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAiProvider("openrouter")}
+                    className={`px-3 py-2 text-xs font-medium rounded-lg border text-center transition-all ${
+                      aiProvider === "openrouter"
+                        ? "border-brand-500 bg-brand-500/10 text-brand-300 font-semibold shadow-sm"
+                        : "border-border bg-secondary/30 text-muted-foreground hover:bg-secondary/60"
+                    }`}
+                  >
+                    OpenRouter AI
+                  </button>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

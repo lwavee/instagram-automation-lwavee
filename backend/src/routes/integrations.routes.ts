@@ -48,11 +48,11 @@ router.get(
           lastTestedAt: found?.lastTestedAt,
           defaultModel:
             found?.defaultModel ||
-            (provider === "gemini" ? "gemini-2.5-flash" : provider === "openai" ? "gpt-4o-mini" : "meta-llama/llama-3.3-70b-instruct"),
+            (provider === "gemini" ? "gemini-3.1-flash-lite" : provider === "openai" ? "gpt-4o-mini" : "meta-llama/llama-3.3-70b-instruct"),
           availableModels: found?.availableModels?.length
             ? found.availableModels
             : provider === "gemini"
-            ? ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-1.5-flash"]
+            ? ["gemini-3.1-flash-lite", "gemini-3.8-flash", "gemini-3.5-flash"]
             : provider === "openai"
             ? ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"]
             : ["meta-llama/llama-3.3-70b-instruct", "deepseek/deepseek-r1", "anthropic/claude-3.5-sonnet"],

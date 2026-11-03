@@ -15,7 +15,7 @@ const envSchema = z.object({
   N8N_BASE_URL: z.string().default("http://localhost:5678"),
   N8N_WEBHOOK_SECRET: z.string().default("dev_webhook_secret_for_n8n_integration"),
   DEFAULT_AI_PROVIDER: z.enum(["gemini", "openai", "openrouter"]).default("gemini"),
-  DEFAULT_AI_MODEL: z.string().default("gemini-2.5-flash"),
+  DEFAULT_AI_MODEL: z.string().default("gemini-3.1-flash-lite"),
   INSTAGRAM_APP_ID: z.string().optional(),
   INSTAGRAM_APP_SECRET: z.string().optional(),
   INSTAGRAM_CONFIG_ID: z.string().optional(),

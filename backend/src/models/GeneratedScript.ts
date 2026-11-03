@@ -116,7 +116,7 @@ const GeneratedScriptSchema = new Schema<IGeneratedScript>(
     },
     aiModel: {
       type: String,
-      default: "gemini-2.5-flash",
+      default: "gemini-3.1-flash-lite",
     },
     userFeedback: {
       type: String,

@@ -29,7 +29,7 @@ export default function IntegrationsPage() {
   // AI Configuration inputs
   const [selectedProvider, setSelectedProvider] = useState<"gemini" | "openai" | "openrouter">("gemini");
   const [apiKeyInput, setApiKeyInput] = useState("");
-  const [selectedModel, setSelectedModel] = useState("gemini-2.5-flash");
+  const [selectedModel, setSelectedModel] = useState("gemini-3.1-flash-lite");
 
   // Instagram Manual Token input
   const [igId, setIgId] = useState("");

@@ -57,7 +57,7 @@ export class AIService {
 
     // Fallback to environment variables
     if (provider === "gemini" && process.env.GEMINI_API_KEY) {
-      return { apiKey: process.env.GEMINI_API_KEY, defaultModel: "gemini-2.5-flash" };
+      return { apiKey: process.env.GEMINI_API_KEY, defaultModel: "gemini-3.1-flash-lite" };
     }
     if (provider === "openai" && process.env.OPENAI_API_KEY) {
       return { apiKey: process.env.OPENAI_API_KEY, defaultModel: "gpt-4o-mini" };
@@ -78,7 +78,7 @@ export class AIService {
     model?: string
   ): Promise<{ success: boolean; message: string; model: string }> {
     const testPrompt = "Respond with one single word: Connected.";
-    const selectedModel = model || (provider === "gemini" ? "gemini-2.5-flash" : provider === "openai" ? "gpt-4o-mini" : "meta-llama/llama-3.3-70b-instruct");
+    const selectedModel = model || (provider === "gemini" ? "gemini-3.1-flash-lite" : provider === "openai" ? "gpt-4o-mini" : "meta-llama/llama-3.3-70b-instruct");
 
     try {
       if (provider === "gemini") {
@@ -195,27 +195,62 @@ Return a JSON object conforming strictly to this structure:
     let rawJsonResponse = "";
 
     if (creds && activeProvider === "gemini") {
-      const genAI = new GoogleGenerativeAI(creds.apiKey);
-      const model = genAI.getGenerativeModel({
-        model: modelToUse,
-        generationConfig: { responseMimeType: "application/json" },
-      });
-      const response = await model.generateContent(`${systemPrompt}\n\n${userPrompt}`);
-      rawJsonResponse = response.response.text();
+      try {
+        const genAI = new GoogleGenerativeAI(creds.apiKey);
+        const actualModel = modelToUse === "gemini-2.5-flash" ? "gemini-3.1-flash-lite" : modelToUse;
+        const model = genAI.getGenerativeModel({
+          model: actualModel,
+          generationConfig: { responseMimeType: "application/json" },
+        });
+        const response = await model.generateContent(`${systemPrompt}\n\n${userPrompt}`);
+        rawJsonResponse = response.response.text();
+      } catch (geminiErr: any) {
+        console.warn(`Gemini generation failed: ${geminiErr.message}. Checking fallbacks...`);
+        // Fallback to OpenRouter if configured
+        if (process.env.OPENROUTER_API_KEY) {
+          try {
+            console.log("Switching to OpenRouter fallback (meta-llama/llama-3.3-70b-instruct)...");
+            const orClient = new OpenAI({
+              apiKey: process.env.OPENROUTER_API_KEY,
+              baseURL: "https://openrouter.ai/api/v1",
+            });
+            const response = await orClient.chat.completions.create({
+              model: "meta-llama/llama-3.3-70b-instruct",
+              messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: userPrompt },
+              ],
+              response_format: { type: "json_object" },
+            });
+            rawJsonResponse = response.choices[0]?.message?.content || "";
+            activeProvider = "openrouter";
+          } catch (orErr) {
+            console.warn("OpenRouter fallback also failed, using smart template.");
+            return this.generateTemplateScript(params);
+          }
+        } else {
+          return this.generateTemplateScript(params);
+        }
+      }
     } else if (creds && (activeProvider === "openai" || activeProvider === "openrouter")) {
-      const client = new OpenAI({
-        apiKey: creds.apiKey,
-        baseURL: activeProvider === "openrouter" ? "https://openrouter.ai/api/v1" : undefined,
-      });
-      const response = await client.chat.completions.create({
-        model: modelToUse,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        response_format: { type: "json_object" },
-      });
-      rawJsonResponse = response.choices[0]?.message?.content || "";
+      try {
+        const client = new OpenAI({
+          apiKey: creds.apiKey,
+          baseURL: activeProvider === "openrouter" ? "https://openrouter.ai/api/v1" : undefined,
+        });
+        const response = await client.chat.completions.create({
+          model: modelToUse,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          response_format: { type: "json_object" },
+        });
+        rawJsonResponse = response.choices[0]?.message?.content || "";
+      } catch (aiErr: any) {
+        console.warn(`${activeProvider} generation failed: ${aiErr.message}. Using smart template.`);
+        return this.generateTemplateScript(params);
+      }
     } else {
       // Fallback deterministic smart template generator if API keys are not yet entered by user
       return this.generateTemplateScript(params);

@@ -35,16 +35,16 @@ describe("Instagram OAuth Connection & Security", () => {
     process.env.INSTAGRAM_REDIRECT_URI = "http://localhost:5000/api/instagram/callback";
 
     // Mock DB operations so tests run instantly and unit-tested in isolation
-    vi.spyOn(User, "findById").mockImplementation((id: any) =>
+    vi.spyOn(User as any, "findById").mockImplementation((id: any) =>
       Promise.resolve({
         _id: id,
         email: testEmail,
         name: "Test Avee",
         isActive: true,
-      } as any)
+      })
     );
 
-    vi.spyOn(InstagramAccount, "findOneAndUpdate").mockImplementation((query: any, update: any) => {
+    vi.spyOn(InstagramAccount as any, "findOneAndUpdate").mockImplementation((query: any, update: any) => {
       const data = {
         _id: "67c740000000000000000002",
         instagramId: query.instagramId,
@@ -61,10 +61,10 @@ describe("Instagram OAuth Connection & Security", () => {
           return ret;
         },
       };
-      return Promise.resolve(data as any);
+      return Promise.resolve(data);
     });
 
-    vi.spyOn(InstagramAccount, "findOne").mockReturnValue({
+    vi.spyOn(InstagramAccount as any, "findOne").mockReturnValue({
       sort: () =>
         Promise.resolve({
           _id: "67c740000000000000000002",
@@ -84,10 +84,10 @@ describe("Instagram OAuth Connection & Security", () => {
             "pages_read_engagement",
           ],
         }),
-    } as any);
+    });
 
-    vi.spyOn(InstagramAccount, "updateMany").mockResolvedValue({ acknowledged: true, modifiedCount: 1 } as any);
-    vi.spyOn(ActivityLog, "create").mockResolvedValue({} as any);
+    vi.spyOn(InstagramAccount as any, "updateMany").mockResolvedValue({ acknowledged: true, modifiedCount: 1 });
+    vi.spyOn(ActivityLog as any, "create").mockResolvedValue({});
   });
 
   describe("OAuth URL & State Cryptography", () => {

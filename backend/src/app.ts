@@ -83,16 +83,17 @@ export function createApp(): Application {
       status: "online",
       frontendDashboardUrl: env.FRONTEND_URL,
       healthCheck: "/api/health",
-      message: "Backend API is running. To open the interactive SaaS dashboard, go to http://localhost:3000",
+      message: `Backend API is running. To open the interactive SaaS dashboard, visit ${env.FRONTEND_URL}`,
     });
   });
 
   app.get("/api/health", (_req: Request, res: Response) => {
     const isDbConnected = mongoose.connection.readyState === 1;
-    res.json({
+    res.status(200).json({
       status: "ok",
       brand: "Learn With Avee",
       service: "Backend API",
+      environment: process.env.NODE_ENV || (process.env.RENDER === "true" ? "production" : "development"),
       timestamp: new Date().toISOString(),
       uptimeSeconds: Math.floor(process.uptime()),
       database: isDbConnected ? "connected" : "disconnected",

@@ -3,9 +3,19 @@ import { z } from "zod";
 
 dotenv.config();
 
+// Auto-detect production environment on Render if NODE_ENV was not explicitly passed
+if (process.env.RENDER === "true" && !process.env.NODE_ENV) {
+  process.env.NODE_ENV = "production";
+}
+
 const envSchema = z.object({
-  NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
-  PORT: z.string().default("5000").transform((val) => parseInt(val, 10)),
+  NODE_ENV: z
+    .enum(["development", "production", "test"])
+    .default(process.env.RENDER === "true" ? "production" : "development"),
+  PORT: z
+    .union([z.string(), z.number()])
+    .default("5000")
+    .transform((val) => (typeof val === "number" ? val : parseInt(val, 10))),
   MONGODB_URI: z.string().default("mongodb://localhost:27017/learn_with_avee"),
   JWT_SECRET: z.string().default("development_jwt_secret_must_be_32_characters_minimum_len"),
   JWT_EXPIRES_IN: z.string().default("7d"),
@@ -19,7 +29,14 @@ const envSchema = z.object({
   INSTAGRAM_APP_ID: z.string().optional(),
   INSTAGRAM_APP_SECRET: z.string().optional(),
   INSTAGRAM_CONFIG_ID: z.string().optional(),
-  INSTAGRAM_REDIRECT_URI: z.string().default("http://localhost:5000/api/instagram/callback"),
+  INSTAGRAM_REDIRECT_URI: z
+    .string()
+    .optional()
+    .transform((val) => {
+      if (val && val.trim() !== "") return val;
+      const base = process.env.BACKEND_URL || "http://localhost:5000";
+      return `${base.replace(/\/$/, "")}/api/instagram/callback`;
+    }),
   MEDIA_STORAGE_PROVIDER: z.enum(["local", "cloudinary", "supabase"]).default("local"),
   CLOUDINARY_URL: z.string().optional(),
   CLOUDINARY_CLOUD_NAME: z.string().optional(),

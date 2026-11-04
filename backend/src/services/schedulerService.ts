@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import { SocialPost, ISocialPost } from "../models/SocialPost";
 import { ContentSchedule } from "../models/ContentSchedule";
 import { AutomationExecution } from "../models/AutomationExecution";
@@ -14,8 +15,14 @@ export class SchedulerService {
     skipped: number;
     failed: number;
   }> {
-    const now = new Date();
     const stats = { processed: 0, published: 0, skipped: 0, failed: 0 };
+
+    // Guard: strictly do not execute database operations if MongoDB is disconnected
+    if (mongoose.connection.readyState !== 1) {
+      return stats;
+    }
+
+    const now = new Date();
 
     // 1. Find posts that are scheduled and due
     const duePosts = await SocialPost.find({

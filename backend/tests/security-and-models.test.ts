@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { encryptSensitive, decryptSensitive, maskSecret } from "../src/utils/encryption";
 import { generateToken, hashPassword, verifyPassword } from "../src/middleware/auth";
+import { validateMongoUri } from "../src/config/db";
 import request from "supertest";
 import { createApp } from "../src/app";
 
@@ -45,6 +46,42 @@ describe("Learn With Avee — Security & Encryption", () => {
     const token = generateToken(payload);
     expect(token).toBeDefined();
     expect(token.split(".").length).toBe(3);
+  });
+});
+
+describe("MongoDB URI Validation & Resiliency", () => {
+  it("approves valid mongodb+srv connection string", () => {
+    const res = validateMongoUri("mongodb+srv://admin:pass123@cluster0.pjl4e3p.mongodb.net/learn_with_avee?retryWrites=true&w=majority");
+    expect(res.valid).toBe(true);
+  });
+
+  it("approves valid standard mongodb connection string", () => {
+    const res = validateMongoUri("mongodb://127.0.0.1:27017/learn_with_avee");
+    expect(res.valid).toBe(true);
+  });
+
+  it("rejects empty or missing URI", () => {
+    expect(validateMongoUri("").valid).toBe(false);
+    expect(validateMongoUri(undefined).valid).toBe(false);
+    expect(validateMongoUri("   ").valid).toBe(false);
+  });
+
+  it("rejects invalid URI protocol", () => {
+    const res = validateMongoUri("postgres://localhost:5432/db");
+    expect(res.valid).toBe(false);
+    expect(res.reason).toContain("must start with either 'mongodb://' or 'mongodb+srv://'");
+  });
+
+  it("flags unreplaced <db_password> or <password> placeholder", () => {
+    const res = validateMongoUri("mongodb+srv://user:<db_password>@cluster0.mongodb.net/db");
+    expect(res.valid).toBe(false);
+    expect(res.reason).toContain("<db_password>");
+  });
+
+  it("flags unreplaced <db_username> or <username> placeholder", () => {
+    const res = validateMongoUri("mongodb+srv://<db_username>:pass@cluster0.mongodb.net/db");
+    expect(res.valid).toBe(false);
+    expect(res.reason).toContain("<db_username>");
   });
 });
 

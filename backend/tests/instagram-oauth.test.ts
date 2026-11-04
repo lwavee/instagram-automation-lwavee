@@ -28,7 +28,7 @@ describe("Instagram OAuth Connection & Security", () => {
   const app = createApp();
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     process.env.INSTAGRAM_APP_ID = "1442580534699263";
     process.env.INSTAGRAM_APP_SECRET = "ef88638e3461ecf520d223c2ce554c0b";
     process.env.INSTAGRAM_CONFIG_ID = "1593211899139986";

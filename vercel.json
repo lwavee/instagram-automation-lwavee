@@ -1,8 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": "nextjs",
-  "buildCommand": "cd frontend && npm install && npm run build",
-  "outputDirectory": "frontend/.next",
   "cleanUrls": true,
   "headers": [
     {
@@ -32,4 +29,3 @@
     }
   ]
 }
-

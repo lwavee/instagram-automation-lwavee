@@ -20,7 +20,9 @@ export default function LoginPage() {
 
     try {
       await login({ email, password });
-      window.location.href = "/";
+      const searchParams = new URLSearchParams(window.location.search);
+      const redirectUrl = searchParams.get("redirect") || "/";
+      window.location.href = redirectUrl;
     } catch (err: any) {
       setError(err.message || "Invalid credentials. Please try again.");
     } finally {

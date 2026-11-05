@@ -52,10 +52,12 @@ router.post(
         role: user.role,
       });
 
+      const isProduction = process.env.NODE_ENV === "production" || process.env.RENDER === "true";
+
       res.cookie("auth_token", token, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
+        secure: isProduction,
+        sameSite: isProduction ? "none" : "lax",
         maxAge: 7 * 24 * 60 * 60 * 1000,
       });
 
@@ -116,10 +118,12 @@ router.post(
         role: user.role,
       });
 
+      const isProduction = process.env.NODE_ENV === "production" || process.env.RENDER === "true";
+
       res.cookie("auth_token", token, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
+        secure: isProduction,
+        sameSite: isProduction ? "none" : "lax",
         maxAge: 7 * 24 * 60 * 60 * 1000,
       });
 
@@ -146,7 +150,12 @@ router.post(
 
 // POST /api/auth/logout
 router.post("/logout", (req: Request, res: Response) => {
-  res.clearCookie("auth_token");
+  const isProduction = process.env.NODE_ENV === "production" || process.env.RENDER === "true";
+  res.clearCookie("auth_token", {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "lax",
+  });
   res.json({
     success: true,
     data: { message: "Successfully logged out." },

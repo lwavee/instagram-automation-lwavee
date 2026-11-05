@@ -4,6 +4,8 @@ import { connectDB } from "./config/db";
 import { env } from "./config/env";
 import { SchedulerService } from "./services/schedulerService";
 import { StorageService } from "./services/storageService";
+import { User } from "./models/User";
+import { hashPassword } from "./middleware/auth";
 
 async function bootstrap() {
   // 1. Ensure local uploads directory exists
@@ -18,6 +20,26 @@ async function bootstrap() {
 
   // 3. Connect to MongoDB (awaited before database-dependent background workers start)
   await connectDB();
+
+  // Seed default admin user if database is fresh and empty
+  if (mongoose.connection.readyState === 1) {
+    try {
+      const userCount = await User.countDocuments();
+      if (userCount === 0) {
+        const passwordHash = await hashPassword("password123");
+        await User.create({
+          name: "Avee Lohar",
+          email: "avee@learnwithavee.com",
+          passwordHash,
+          role: "admin",
+          isActive: true,
+        });
+        console.log("👤 Initialized default admin account: avee@learnwithavee.com (Password: password123)");
+      }
+    } catch (seedErr: any) {
+      console.warn("User seeding warning:", seedErr.message);
+    }
+  }
 
   // 4. Create Express app
   const app = createApp();

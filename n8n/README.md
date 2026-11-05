@@ -14,6 +14,7 @@ This directory contains the production-ready n8n Community Edition automation wo
 
 | File | Name | Schedule / Trigger | Purpose |
 | :--- | :--- | :--- | :--- |
+| `workflows/instagram-ai-automation-workflow.json` | **Instagram AI Automation (@lw_avee)** | Every 15 min / Manual | End-to-end pipeline: Google Sheets ➔ OpenRouter AI ➔ Staged Manual Approval ➔ Meta Graph API Reel/Post Publisher ➔ Sheet URL sync. |
 | `workflows/workflow-a-daily-content-research.json` | **Workflow A — Daily Research** | Daily @ 08:00 AM IST | Discovers trending AI & tech topics, extracts articles, and saves them to MongoDB via backend API. |
 | `workflows/workflow-b-ai-script-generation.json` | **Workflow B — Script Generation** | Webhook / On Demand | Takes approved topics and generates high-retention Hindi/Hinglish Reel scripts with 2s hooks, scenes, voiceovers, captions, and CTAs. |
 | `workflows/workflow-c-content-approval.json` | **Workflow C — Content Approval** | Webhook | Human-in-the-loop gate: notifies the dashboard and pauses workflow until user approves. |

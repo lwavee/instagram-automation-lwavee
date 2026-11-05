@@ -1,0 +1,741 @@
+{
+  "name": "Instagram AI Automation — @lw_avee (Google Sheets + OpenRouter + Meta Graph API)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/15 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Check Every 15 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [160, 400]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "param-ig-id",
+              "name": "instagram_account_id",
+              "value": "YOUR_INSTAGRAM_BUSINESS_ACCOUNT_ID",
+              "type": "string"
+            },
+            {
+              "id": "param-openrouter-model",
+              "name": "openrouter_model",
+              "value": "meta-llama/llama-3.3-70b-instruct",
+              "type": "string"
+            },
+            {
+              "id": "param-sheet-id",
+              "name": "google_sheet_id",
+              "value": "YOUR_GOOGLE_SHEET_ID_HERE",
+              "type": "string"
+            },
+            {
+              "id": "param-sheet-range",
+              "name": "google_sheet_name",
+              "value": "Content_Pipeline",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "config-node",
+      "name": "Workflow Configuration",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [380, 400]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Workflow Configuration').item.json.google_sheet_id }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $('Workflow Configuration').item.json.google_sheet_name }}",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "read-google-sheet",
+      "name": "Read Topics from Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [600, 400],
+      "credentials": {
+        "googleSheetsOAuth2": {
+          "id": "google-sheets-cred",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter and route rows based on pipeline state\nconst items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const row = item.json;\n  const topic = (row.Topic || row.topic || '').trim();\n  const approvalStatus = (row.Approval_Status || row.approval_status || 'Draft').trim();\n  const publishingStatus = (row.Publishing_Status || row.publishing_status || 'Not_Started').trim();\n  const caption = (row.Generated_Caption || row.generated_caption || '').trim();\n  const mediaUrl = (row.Media_URL || row.media_url || '').trim();\n\n  // Skip completely empty rows\n  if (!topic && !mediaUrl) continue;\n\n  let action = 'SKIP';\n  \n  // Phase 1: Topic present, but caption not yet generated -> Needs AI Generation\n  if (topic && !caption && publishingStatus !== 'Published') {\n    action = 'GENERATE_AI_CONTENT';\n  }\n  // Phase 2: User explicitly marked row as Approved and not yet published -> Ready to Publish\n  else if (approvalStatus.toLowerCase() === 'approved' && publishingStatus.toLowerCase() !== 'published' && mediaUrl) {\n    action = 'PUBLISH_TO_INSTAGRAM';\n  }\n  // Phase 3: Pending review or draft -> Waiting for human approval\n  else if (approvalStatus.toLowerCase() === 'pending_review') {\n    action = 'AWAITING_APPROVAL';\n  }\n\n  results.push({\n    json: {\n      ...row,\n      action,\n      row_number: row.row_number || item.pairedItem?.item || 0\n    }\n  });\n}\n\nreturn results;"
+      },
+      "id": "evaluate-row-state",
+      "name": "Evaluate Row State & Routing",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [820, 400]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "GENERATE_AI_CONTENT",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Generate AI Content"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "PUBLISH_TO_INSTAGRAM",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Publish to Instagram"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "id": "router-switch",
+      "name": "Action Router (Generate vs Publish)",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [1040, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "HTTP-Referer",
+              "value": "https://instagram-automation-lwav.app.n8n.cloud"
+            },
+            {
+              "name": "X-Title",
+              "value": "Learn With Avee Instagram Automation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"{{ $('Workflow Configuration').item.json.openrouter_model }}\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a viral Instagram content strategist and copywriter for the Instagram account @lw_avee (focus: AI, Tech, Automation, No-Code, Future Tools in conversational Hindi/Hinglish and English).\\n\\nYour job is to generate:\\n1. An ultra-engaging, high-retention Instagram caption for a Reel/Post on the given topic.\\n2. Strong 2-second visual hook at the start.\\n3. Concise, punchy bullet points highlighting core insights or tools.\\n4. High-converting Call to Action (e.g., 'Comment AI and I will DM you the direct link! Follow @lw_avee for daily AI updates').\\n5. 15-20 highly relevant, trending hashtags categorized into niche (#LearnWithAvee #AITools), category (#ArtificialIntelligence #Automation), and viral hashtags.\\n\\nOutput format MUST be strict JSON:\\n{\\n  \\\"caption\\\": \\\"Full caption text with emojis and formatting\\\",\\n  \\\"hashtags\\\": \\\"#hashtag1 #hashtag2 ...\\\"\\n}\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Create an Instagram caption and hashtags for the following topic:\\nTopic: {{ $json.Topic || $json.topic }}\\nFormat: {{ $json.Content_Type || 'REEL' }}\\nTarget Audience: Tech enthusiasts, creators, students, and entrepreneurs.\"\n    }\n  ],\n  \"temperature\": 0.7,\n  \"response_format\": { \"type\": \"json_object\" }\n}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "openrouter-ai-generation",
+      "name": "Generate Caption & Hashtags via OpenRouter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1320, 240],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "openrouter-api-key",
+          "name": "OpenRouter API Key Header"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse OpenRouter response and format for Google Sheets update\nconst item = $input.item.json;\nconst prevRow = $('Evaluate Row State & Routing').item.json;\n\nlet parsedAi;\ntry {\n  const contentRaw = item.choices[0].message.content;\n  parsedAi = JSON.parse(contentRaw);\n} catch (e) {\n  parsedAi = {\n    caption: item.choices?.[0]?.message?.content || 'Failed to parse caption',\n    hashtags: '#AI #Tech #Automation #LearnWithAvee'\n  };\n}\n\nreturn {\n  json: {\n    ...prevRow,\n    Generated_Caption: parsedAi.caption || '',\n    Generated_Hashtags: parsedAi.hashtags || '',\n    Approval_Status: 'Pending_Review', // STRICT MANUAL APPROVAL: Stage for human approval\n    Publishing_Status: 'Ready for Approval',\n    Error_Message: '',\n    Updated_At: new Date().toISOString()\n  }\n};"
+      },
+      "id": "format-ai-output",
+      "name": "Format AI Output & Stage for Approval",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1540, 240]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Workflow Configuration').item.json.google_sheet_id }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $('Workflow Configuration').item.json.google_sheet_name }}",
+          "mode": "name"
+        },
+        "columnToMatchOn": "Topic",
+        "valueToMatchOn": "={{ $json.Topic }}",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "Generated_Caption",
+              "fieldValue": "={{ $json.Generated_Caption }}"
+            },
+            {
+              "fieldId": "Generated_Hashtags",
+              "fieldValue": "={{ $json.Generated_Hashtags }}"
+            },
+            {
+              "fieldId": "Approval_Status",
+              "fieldValue": "Pending_Review"
+            },
+            {
+              "fieldId": "Publishing_Status",
+              "fieldValue": "Ready for Approval"
+            },
+            {
+              "fieldId": "Error_Message",
+              "fieldValue": ""
+            },
+            {
+              "fieldId": "Updated_At",
+              "fieldValue": "={{ $json.Updated_At }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "update-sheet-ai-staged",
+      "name": "Update Google Sheet (Staged for Review)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1760, 240],
+      "credentials": {
+        "googleSheetsOAuth2": {
+          "id": "google-sheets-cred",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.Approval_Status || $json.approval_status }}",
+              "rightValue": "Approved",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "leftValue": "={{ $json.Media_URL || $json.media_url }}",
+              "rightValue": "http",
+              "operator": {
+                "type": "string",
+                "operation": "startsWith"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "verify-manual-approval",
+      "name": "GATE: Strict Human Approval Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1320, 520]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare parameters according to Meta Graph API Container Workflow\nconst item = $input.item.json;\nconst contentType = (item.Content_Type || item.content_type || 'REEL').toUpperCase();\nconst mediaUrl = item.Media_URL || item.media_url;\nconst coverUrl = item.Cover_URL || item.cover_url || '';\nconst caption = item.Generated_Caption || item.generated_caption || '';\nconst hashtags = item.Generated_Hashtags || item.generated_hashtags || '';\n\nconst fullCaption = `${caption}\\n\\n.\\n.\\n${hashtags}`.trim();\n\nconst payload = {\n  caption: fullCaption,\n  contentType\n};\n\nif (contentType === 'REEL' || contentType === 'REELS' || contentType === 'VIDEO') {\n  payload.media_type = 'REELS';\n  payload.video_url = mediaUrl;\n  payload.share_to_feed = 'true';\n  if (coverUrl && coverUrl.startsWith('http')) {\n    payload.cover_url = coverUrl;\n  }\n} else {\n  payload.image_url = mediaUrl;\n}\n\nreturn {\n  json: {\n    ...item,\n    metaPayload: payload\n  }\n};"
+      },
+      "id": "prepare-meta-payload",
+      "name": "Prepare Meta Instagram Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 500]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v21.0/{{ $('Workflow Configuration').item.json.instagram_account_id }}/media",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "caption",
+              "value": "={{ $json.metaPayload.caption }}"
+            },
+            {
+              "name": "media_type",
+              "value": "={{ $json.metaPayload.media_type || '' }}"
+            },
+            {
+              "name": "video_url",
+              "value": "={{ $json.metaPayload.video_url || '' }}"
+            },
+            {
+              "name": "image_url",
+              "value": "={{ $json.metaPayload.image_url || '' }}"
+            },
+            {
+              "name": "share_to_feed",
+              "value": "={{ $json.metaPayload.share_to_feed || 'true' }}"
+            },
+            {
+              "name": "cover_url",
+              "value": "={{ $json.metaPayload.cover_url || '' }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "create-media-container",
+      "name": "Step 1: Create Meta Media Container",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1780, 500],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "meta-access-token",
+          "name": "Meta Graph API Token"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "amount": 25,
+        "unit": "seconds"
+      },
+      "id": "wait-for-processing",
+      "name": "Wait for Meta Video Processing",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [2000, 480],
+      "webhookId": "wait-video-proc-webhook"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://graph.facebook.com/v21.0/{{ $('Step 1: Create Meta Media Container').item.json.id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "status_code,status"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "check-container-status",
+      "name": "Step 2: Check Container Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2220, 480],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "meta-access-token",
+          "name": "Meta Graph API Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v21.0/{{ $('Workflow Configuration').item.json.instagram_account_id }}/media_publish",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "creation_id",
+              "value": "={{ $('Step 1: Create Meta Media Container').item.json.id }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "publish-media-container",
+      "name": "Step 3: Publish Media Container to Instagram",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2440, 480],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "meta-access-token",
+          "name": "Meta Graph API Token"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://graph.facebook.com/v21.0/{{ $json.id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "permalink,timestamp,media_type"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "get-post-permalink",
+      "name": "Step 4: Fetch Instagram Post URL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2660, 480],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "meta-access-token",
+          "name": "Meta Graph API Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Workflow Configuration').item.json.google_sheet_id }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $('Workflow Configuration').item.json.google_sheet_name }}",
+          "mode": "name"
+        },
+        "columnToMatchOn": "Topic",
+        "valueToMatchOn": "={{ $('Prepare Meta Instagram Payload').item.json.Topic }}",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "Publishing_Status",
+              "fieldValue": "Published"
+            },
+            {
+              "fieldId": "Instagram_Post_URL",
+              "fieldValue": "={{ $json.permalink }}"
+            },
+            {
+              "fieldId": "Error_Message",
+              "fieldValue": ""
+            },
+            {
+              "fieldId": "Updated_At",
+              "fieldValue": "={{ new Date().toISOString() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "update-sheet-success",
+      "name": "Update Google Sheet (Published Success)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [2880, 480],
+      "credentials": {
+        "googleSheetsOAuth2": {
+          "id": "google-sheets-cred",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Workflow Configuration').item.json.google_sheet_id }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $('Workflow Configuration').item.json.google_sheet_name }}",
+          "mode": "name"
+        },
+        "columnToMatchOn": "Topic",
+        "valueToMatchOn": "={{ $('Prepare Meta Instagram Payload').item.json.Topic }}",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "Publishing_Status",
+              "fieldValue": "Failed"
+            },
+            {
+              "fieldId": "Error_Message",
+              "fieldValue": "={{ $json.error?.message || $json.error || 'Meta Graph API publishing failed' }}"
+            },
+            {
+              "fieldId": "Updated_At",
+              "fieldValue": "={{ new Date().toISOString() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "update-sheet-failure",
+      "name": "Update Google Sheet (Failed)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [2660, 680],
+      "credentials": {
+        "googleSheetsOAuth2": {
+          "id": "google-sheets-cred",
+          "name": "Google Sheets Account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Check Every 15 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Workflow Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Configuration": {
+      "main": [
+        [
+          {
+            "node": "Read Topics from Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Topics from Google Sheets": {
+      "main": [
+        [
+          {
+            "node": "Evaluate Row State & Routing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate Row State & Routing": {
+      "main": [
+        [
+          {
+            "node": "Action Router (Generate vs Publish)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Action Router (Generate vs Publish)": {
+      "main": [
+        [
+          {
+            "node": "Generate Caption & Hashtags via OpenRouter",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GATE: Strict Human Approval Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Caption & Hashtags via OpenRouter": {
+      "main": [
+        [
+          {
+            "node": "Format AI Output & Stage for Approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format AI Output & Stage for Approval": {
+      "main": [
+        [
+          {
+            "node": "Update Google Sheet (Staged for Review)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GATE: Strict Human Approval Check": {
+      "main": [
+        [
+          {
+            "node": "Prepare Meta Instagram Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Meta Instagram Payload": {
+      "main": [
+        [
+          {
+            "node": "Step 1: Create Meta Media Container",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 1: Create Meta Media Container": {
+      "main": [
+        [
+          {
+            "node": "Wait for Meta Video Processing",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Google Sheet (Failed)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Meta Video Processing": {
+      "main": [
+        [
+          {
+            "node": "Step 2: Check Container Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 2: Check Container Status": {
+      "main": [
+        [
+          {
+            "node": "Step 3: Publish Media Container to Instagram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 3: Publish Media Container to Instagram": {
+      "main": [
+        [
+          {
+            "node": "Step 4: Fetch Instagram Post URL",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Google Sheet (Failed)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 4: Fetch Instagram Post URL": {
+      "main": [
+        [
+          {
+            "node": "Update Google Sheet (Published Success)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Kolkata"
+  }
+}

@@ -35,7 +35,7 @@ export default function IntegrationsPage() {
   // AI Configuration inputs
   const [selectedProvider, setSelectedProvider] = useState<"gemini" | "openai" | "openrouter">("gemini");
   const [apiKeyInput, setApiKeyInput] = useState("");
-  const [selectedModel, setSelectedModel] = useState("gemini-3.1-flash-lite");
+  const [selectedModel, setSelectedModel] = useState("gemini-1.5-flash");
 
   // Instagram Manual Token input (fallback)
   const [igId, setIgId] = useState("");
@@ -221,12 +221,22 @@ export default function IntegrationsPage() {
       {statusMsg && (
         <div
           className={`p-3 text-xs rounded-lg border flex items-center justify-between ${
-            statusMsg.includes("Error") || statusMsg.includes("Failed") || statusMsg.includes("❌")
+            statusMsg.includes("Error") || statusMsg.includes("Failed") || statusMsg.includes("❌") || statusMsg.includes("Authentication required")
               ? "bg-destructive/15 border-destructive/30 text-red-300"
               : "bg-emerald-500/10 border-emerald-500/20 text-emerald-300"
           }`}
         >
-          <span>{statusMsg}</span>
+          <div className="flex items-center gap-2">
+            <span>{statusMsg}</span>
+            {statusMsg.includes("Authentication required") && (
+              <a
+                href="/login?redirect=/integrations"
+                className="underline font-bold text-amber-300 hover:text-amber-200 ml-2"
+              >
+                Sign In Now →
+              </a>
+            )}
+          </div>
           <button onClick={() => setStatusMsg("")} className="text-muted-foreground hover:text-foreground">
             <X className="w-3.5 h-3.5" />
           </button>

@@ -1,0 +1,17 @@
+{
+  "name": "@lwavee/shared",
+  "version": "1.0.0",
+  "description": "Shared TypeScript types, interfaces and Zod validation schemas for LWAVEE Instagram Automation",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "node ../../backend/node_modules/typescript/bin/tsc",
+    "lint": "node ../../backend/node_modules/typescript/bin/tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}

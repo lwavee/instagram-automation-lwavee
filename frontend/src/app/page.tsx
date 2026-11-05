@@ -86,23 +86,23 @@ export default function DashboardOverviewPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border/80 pb-6">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">
-            Overview Dashboard
+            LWAVEE Dashboard
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Learn With Avee • AI-Powered Instagram Reel Production & Publishing System
+            Instagram AI Automation & Publishing Engine • @lw_avee
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <Link href="/research">
+          <Link href="/content-studio">
             <Button variant="outline" size="sm" className="gap-2">
               <Sparkles className="w-4 h-4 text-brand-400" />
-              Discover Topics
+              Content Studio
             </Button>
           </Link>
-          <Link href="/scripts">
+          <Link href="/ai-caption-generator">
             <Button variant="gradient" size="sm" className="gap-2">
               <Play className="w-4 h-4" />
-              Generate Reel Script
+              AI Caption Generator
             </Button>
           </Link>
         </div>

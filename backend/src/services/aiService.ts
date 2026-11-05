@@ -57,7 +57,7 @@ export class AIService {
 
     // Fallback to environment variables
     if (provider === "gemini" && process.env.GEMINI_API_KEY) {
-      return { apiKey: process.env.GEMINI_API_KEY, defaultModel: "gemini-3.1-flash-lite" };
+      return { apiKey: process.env.GEMINI_API_KEY, defaultModel: "gemini-1.5-flash" };
     }
     if (provider === "openai" && process.env.OPENAI_API_KEY) {
       return { apiKey: process.env.OPENAI_API_KEY, defaultModel: "gpt-4o-mini" };
@@ -69,6 +69,17 @@ export class AIService {
     return null;
   }
 
+  private static normalizeGeminiModel(model?: string): string {
+    if (!model) return "gemini-1.5-flash";
+    const m = model.trim().toLowerCase();
+    if (m === "gemini-1.5-flash" || m === "gemini-1.5-pro" || m === "gemini-2.0-flash") {
+      return m;
+    }
+    if (m.includes("2.0")) return "gemini-2.0-flash";
+    if (m.includes("pro")) return "gemini-1.5-pro";
+    return "gemini-1.5-flash";
+  }
+
   /**
    * Tests connection to an AI provider with the provided API key
    */
@@ -78,7 +89,10 @@ export class AIService {
     model?: string
   ): Promise<{ success: boolean; message: string; model: string }> {
     const testPrompt = "Respond with one single word: Connected.";
-    const selectedModel = model || (provider === "gemini" ? "gemini-3.1-flash-lite" : provider === "openai" ? "gpt-4o-mini" : "meta-llama/llama-3.3-70b-instruct");
+    const selectedModel =
+      provider === "gemini"
+        ? this.normalizeGeminiModel(model)
+        : model || (provider === "openai" ? "gpt-4o-mini" : "meta-llama/llama-3.3-70b-instruct");
 
     try {
       if (provider === "gemini") {
@@ -197,7 +211,7 @@ Return a JSON object conforming strictly to this structure:
     if (creds && activeProvider === "gemini") {
       try {
         const genAI = new GoogleGenerativeAI(creds.apiKey);
-        const actualModel = modelToUse === "gemini-2.5-flash" ? "gemini-3.1-flash-lite" : modelToUse;
+        const actualModel = this.normalizeGeminiModel(modelToUse);
         const model = genAI.getGenerativeModel({
           model: actualModel,
           generationConfig: { responseMimeType: "application/json" },

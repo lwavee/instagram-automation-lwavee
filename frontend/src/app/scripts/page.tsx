@@ -68,7 +68,7 @@ export default function ScriptGeneratorPage() {
         targetDurationSeconds: duration,
         customInstructions,
         provider: aiProvider,
-        model: aiProvider === "gemini" ? "gemini-3.1-flash-lite" : "meta-llama/llama-3.3-70b-instruct",
+        model: aiProvider === "gemini" ? "gemini-1.5-flash" : "meta-llama/llama-3.3-70b-instruct",
       });
 
       if (res?.script) {

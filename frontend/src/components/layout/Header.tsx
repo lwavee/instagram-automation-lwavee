@@ -40,7 +40,7 @@ export function Header() {
         </span>
         <span className="text-muted-foreground/40 font-light">|</span>
         <span className="text-xs text-brand-300 font-medium">
-          Focus: AI • Tech • Hindi/Hinglish Reels
+          @lw_avee • Instagram AI Automation
         </span>
       </div>
 

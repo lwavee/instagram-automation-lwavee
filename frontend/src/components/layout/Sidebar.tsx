@@ -5,34 +5,38 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
-  Compass,
   Sparkles,
   CalendarDays,
   FolderOpen,
-  Film,
   Send,
-  Workflow,
   BarChart3,
   Settings,
   Plug,
   Instagram,
-  ShieldAlert,
+  Clock,
+  ListOrdered,
+  FileCode,
+  Activity,
+  Bot,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/authContext";
 
+// The 13 required dashboard navigation modules for LWAVEE
 const navItems = [
   { name: "Overview", href: "/", icon: LayoutDashboard },
-  { name: "Content Research", href: "/research", icon: Compass },
-  { name: "AI Script Generator", href: "/scripts", icon: Sparkles },
-  { name: "Content Calendar", href: "/calendar", icon: CalendarDays },
+  { name: "Content Studio", href: "/content-studio", icon: Sparkles },
+  { name: "AI Caption Generator", href: "/ai-caption-generator", icon: Bot },
   { name: "Media Library", href: "/media", icon: FolderOpen },
-  { name: "Reel Manager", href: "/reels", icon: Film },
-  { name: "Instagram Publishing", href: "/publishing", icon: Send },
-  { name: "Automation Workflows", href: "/automation", icon: Workflow },
-  { name: "Analytics & Insights", href: "/analytics", icon: BarChart3 },
+  { name: "Content Calendar", href: "/calendar", icon: CalendarDays },
+  { name: "Scheduled Posts", href: "/scheduled-posts", icon: Clock },
+  { name: "Publishing Queue", href: "/publishing-queue", icon: ListOrdered },
+  { name: "Instagram Accounts", href: "/instagram-accounts", icon: Instagram },
+  { name: "Analytics", href: "/analytics", icon: BarChart3 },
+  { name: "Automation Logs", href: "/automation-logs", icon: Activity },
+  { name: "AI Settings", href: "/ai-settings", icon: FileCode },
   { name: "API Integrations", href: "/integrations", icon: Plug },
-  { name: "Settings", href: "/settings", icon: Settings },
+  { name: "Account Settings", href: "/settings", icon: Settings },
 ];
 
 export function Sidebar() {
@@ -45,20 +49,20 @@ export function Sidebar() {
       {/* Brand Header */}
       <div className="h-16 flex items-center px-6 border-b border-border/80 gap-3">
         <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-brand-600 via-pink-600 to-amber-500 flex items-center justify-center shadow-lg shadow-brand-500/20 text-white font-bold text-lg">
-          A
+          L
         </div>
         <div>
           <span className="font-bold text-base tracking-tight text-foreground block leading-none">
-            Learn With Avee
+            LWAVEE
           </span>
-          <span className="text-[11px] font-medium text-brand-400 block tracking-wider uppercase mt-1">
-            AI Instagram SaaS
+          <span className="text-[10px] font-semibold text-brand-400 block tracking-wider uppercase mt-1">
+            Instagram AI Automation
           </span>
         </div>
       </div>
 
       {/* Navigation List */}
-      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+      <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-0.5">
         {navItems.map((item) => {
           const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
           const Icon = item.icon;
@@ -67,14 +71,14 @@ export function Sidebar() {
               key={item.name}
               href={item.href}
               className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150",
+                "flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-150",
                 isActive
                   ? "bg-brand-500/15 text-brand-300 font-semibold shadow-sm border border-brand-500/25"
                   : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"
               )}
             >
-              <Icon className={cn("w-4 h-4", isActive ? "text-brand-400" : "text-muted-foreground")} />
-              <span>{item.name}</span>
+              <Icon className={cn("w-4 h-4 shrink-0", isActive ? "text-brand-400" : "text-muted-foreground")} />
+              <span className="truncate">{item.name}</span>
             </Link>
           );
         })}
@@ -82,8 +86,8 @@ export function Sidebar() {
 
       {/* Auto-Publish Guardrail Notice in Footer */}
       <div className="p-4 border-t border-border/80 bg-secondary/30">
-        <div className="flex items-center justify-between text-xs mb-2">
-          <span className="text-muted-foreground font-medium">Auto-Publish:</span>
+        <div className="flex items-center justify-between text-xs mb-1.5">
+          <span className="text-muted-foreground font-medium text-[11px]">Publishing Gate:</span>
           <span
             className={cn(
               "px-2 py-0.5 rounded-full font-semibold text-[10px] uppercase tracking-wide",
@@ -92,16 +96,13 @@ export function Sidebar() {
                 : "bg-amber-500/20 text-amber-300 border border-amber-500/30"
             )}
           >
-            {autoPublish ? "Enabled" : "Manual Approval"}
+            {autoPublish ? "Auto-Approved" : "Manual Approval"}
           </span>
         </div>
-        <p className="text-[11px] text-muted-foreground leading-snug">
-          {autoPublish
-            ? "Approved scheduled posts will be sent automatically to Instagram."
-            : "Safety lock: Human approval required before every post."}
+        <p className="text-[10px] text-muted-foreground leading-snug">
+          Target Account: <strong className="text-foreground">@lw_avee</strong>. Content is never published without explicit approval.
         </p>
       </div>
     </aside>
   );
 }
-

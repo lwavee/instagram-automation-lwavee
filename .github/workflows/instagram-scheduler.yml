@@ -1,0 +1,54 @@
+name: LWAVEE Instagram Content Publishing Scheduler
+
+on:
+  schedule:
+    # Run every 15 minutes (UTC)
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+    inputs:
+      force_run:
+        description: 'Force immediate publishing run of due approved posts'
+        required: false
+        default: 'false'
+
+jobs:
+  publish-due-posts:
+    name: Claim & Publish Due Approved Instagram Posts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Trigger LWAVEE Backend Publishing Engine
+        run: |
+          echo "Triggering cloud scheduler at $(date -u +'%Y-%m-%dT%H:%M:%SZ')..."
+          
+          if [ -z "${{ secrets.BACKEND_API_URL }}" ]; then
+            echo "::error::BACKEND_API_URL secret is not set in GitHub repository secrets."
+            exit 1
+          fi
+
+          if [ -z "${{ secrets.SCHEDULER_SECRET }}" ]; then
+            echo "::error::SCHEDULER_SECRET secret is not set in GitHub repository secrets."
+            exit 1
+          fi
+
+          ENDPOINT="${{ secrets.BACKEND_API_URL }}/api/internal/scheduler/run"
+          
+          # Call backend secured endpoint with retry
+          RESPONSE=$(curl -s -S -X POST "$ENDPOINT" \
+            -H "Content-Type: application/json" \
+            -H "x-scheduler-secret: ${{ secrets.SCHEDULER_SECRET }}" \
+            -H "User-Agent: GitHub-Actions-LWAVEE-Scheduler/1.0" \
+            -d '{"trigger": "github-actions-cron", "timestamp": "'$(date -u +'%Y-%m-%dT%H:%M:%SZ')'"}' \
+            --retry 2 \
+            --retry-delay 5 \
+            --max-time 180)
+
+          echo "Response from backend: $RESPONSE"
+
+          # Verify response contains success
+          if echo "$RESPONSE" | grep -q '"success":true'; then
+            echo "Scheduler cycle completed successfully."
+          else
+            echo "::warning::Backend reported non-success or empty response."
+          fi

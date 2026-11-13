@@ -58,19 +58,37 @@ export interface PublishResult {
 
 export class InstagramService {
   /**
-   * Generates official Facebook OAuth URL for Instagram Business Account login
+   * Generates direct Instagram OAuth URL (no Facebook mediator) or Facebook Login for Business dialog
    */
-  public static getOAuthUrl(userId?: string, redirectUri?: string): string {
+  public static getOAuthUrl(
+    userId?: string,
+    redirectUri?: string,
+    flow: "instagram" | "facebook" = "instagram"
+  ): string {
     const appId = process.env.INSTAGRAM_APP_ID;
     if (!appId) {
       throw new Error("INSTAGRAM_APP_ID is not configured in environment or settings");
     }
 
     const callback = redirectUri || env.INSTAGRAM_REDIRECT_URI || `${env.BACKEND_URL}/api/instagram/callback`;
-    const configId = process.env.INSTAGRAM_CONFIG_ID;
     const state = userId ? generateOAuthState(userId) : "";
+    const configId = process.env.INSTAGRAM_CONFIG_ID;
 
-    // If config_id is provided, Meta's Facebook Login for Business configuration defines the flow
+    // Direct Instagram Login for Professionals (NO Facebook mediator, NO Facebook Pages selection)
+    if (flow === "instagram" || !flow) {
+      const scopes = [
+        "instagram_business_basic",
+        "instagram_business_content_publish",
+        "instagram_business_manage_messages",
+        "instagram_business_manage_comments",
+      ].join(",");
+
+      return `https://www.instagram.com/oauth/authorize?enable_fb_login=0&force_authentication=1&client_id=${appId}&redirect_uri=${encodeURIComponent(
+        callback
+      )}&response_type=code&scope=${encodeURIComponent(scopes)}&state=${state}`;
+    }
+
+    // Facebook Login for Business flow (legacy / optional)
     if (configId) {
       return `https://www.facebook.com/v21.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(
         callback
@@ -108,17 +126,46 @@ export class InstagramService {
       throw new Error("Meta App ID or App Secret is not configured");
     }
 
-    // 1. Exchange code for short-lived access token
-    const tokenRes = await axios.get(`${GRAPH_API_BASE}/oauth/access_token`, {
-      params: {
-        client_id: appId,
-        client_secret: appSecret,
-        redirect_uri: callback,
-        code,
-      },
-    });
+    // Clean authorization code (remove any trailing #_ added by Instagram redirect)
+    const sanitizedCode = code.replace(/#_$/, "");
 
-    const shortLivedToken = tokenRes.data?.access_token;
+    let shortLivedToken: string | null = null;
+    let isDirectInstagram = false;
+
+    // 1a. Try direct Instagram OAuth code exchange (api.instagram.com)
+    try {
+      const formData = new URLSearchParams();
+      formData.append("client_id", appId);
+      formData.append("client_secret", appSecret);
+      formData.append("grant_type", "authorization_code");
+      formData.append("redirect_uri", callback);
+      formData.append("code", sanitizedCode);
+
+      const igRes = await axios.post("https://api.instagram.com/oauth/access_token", formData, {
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      });
+
+      if (igRes?.data?.access_token) {
+        shortLivedToken = igRes.data.access_token;
+        isDirectInstagram = true;
+      }
+    } catch (igErr: any) {
+      // Direct Instagram exchange not matched, fall through to Facebook Graph API
+    }
+
+    // 1b. Fallback to Facebook Graph API OAuth exchange if direct Instagram didn't match
+    if (!shortLivedToken) {
+      const tokenRes = await axios.get(`${GRAPH_API_BASE}/oauth/access_token`, {
+        params: {
+          client_id: appId,
+          client_secret: appSecret,
+          redirect_uri: callback,
+          code: sanitizedCode,
+        },
+      });
+      shortLivedToken = tokenRes?.data?.access_token;
+    }
+
     if (!shortLivedToken) {
       throw new Error("Failed to receive access token from Meta OAuth exchange");
     }
@@ -127,73 +174,120 @@ export class InstagramService {
     let longLivedToken = shortLivedToken;
     let expiresAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000);
 
-    try {
-      const longLivedRes = await axios.get(`${GRAPH_API_BASE}/oauth/access_token`, {
-        params: {
-          grant_type: "fb_exchange_token",
-          client_id: appId,
-          client_secret: appSecret,
-          fb_exchange_token: shortLivedToken,
-        },
-      });
-
-      if (longLivedRes.data?.access_token) {
-        longLivedToken = longLivedRes.data.access_token;
-        const expiresInSeconds = longLivedRes.data.expires_in || 5184000;
-        expiresAt = new Date(Date.now() + expiresInSeconds * 1000);
+    if (isDirectInstagram) {
+      try {
+        const igLongLivedRes = await axios.get("https://graph.instagram.com/access_token", {
+          params: {
+            grant_type: "ig_exchange_token",
+            client_secret: appSecret,
+            access_token: shortLivedToken,
+          },
+        });
+        if (igLongLivedRes?.data?.access_token) {
+          longLivedToken = igLongLivedRes.data.access_token;
+          const expiresInSeconds = igLongLivedRes.data.expires_in || 5184000;
+          expiresAt = new Date(Date.now() + expiresInSeconds * 1000);
+        }
+      } catch (igExErr: any) {
+        console.warn("Direct Instagram long-lived token exchange warning:", igExErr.message);
       }
-    } catch (exchangeErr: any) {
-      console.warn("Could not exchange for long-lived token, utilizing short-lived token:", exchangeErr.message);
+    } else {
+      try {
+        const longLivedRes = await axios.get(`${GRAPH_API_BASE}/oauth/access_token`, {
+          params: {
+            grant_type: "fb_exchange_token",
+            client_id: appId,
+            client_secret: appSecret,
+            fb_exchange_token: shortLivedToken,
+          },
+        });
+
+        if (longLivedRes.data?.access_token) {
+          longLivedToken = longLivedRes.data.access_token;
+          const expiresInSeconds = longLivedRes.data.expires_in || 5184000;
+          expiresAt = new Date(Date.now() + expiresInSeconds * 1000);
+        }
+      } catch (exchangeErr: any) {
+        console.warn("Could not exchange for long-lived token, utilizing short-lived token:", exchangeErr.message);
+      }
     }
 
-    // 3. Find connected Facebook Pages and linked Instagram Business Account
-    const pagesRes = await axios.get(`${GRAPH_API_BASE}/me/accounts`, {
-      params: {
-        access_token: longLivedToken,
-        fields: "id,name,access_token,instagram_business_account{id,username,name,profile_picture_url,followers_count,follows_count,media_count}",
-      },
-    });
-
+    // 3. Find connected Instagram Professional account
     let igAccountData: any = null;
     let pageId: string = "";
 
-    if (pagesRes.data?.data && Array.isArray(pagesRes.data.data)) {
-      for (const page of pagesRes.data.data) {
-        if (page.instagram_business_account) {
-          igAccountData = page.instagram_business_account;
-          pageId = page.id;
-          break;
+    // 3a. Direct Instagram flow (/me on graph.instagram.com)
+    if (isDirectInstagram) {
+      try {
+        const profileRes = await axios.get("https://graph.instagram.com/v21.0/me", {
+          params: {
+            access_token: longLivedToken,
+            fields: "id,username,name,account_type,profile_picture_url,media_count",
+          },
+        });
+        if (profileRes?.data?.id && profileRes?.data?.username) {
+          igAccountData = {
+            id: profileRes.data.id,
+            username: profileRes.data.username,
+            name: profileRes.data.name || profileRes.data.username,
+            account_type: profileRes.data.account_type || "BUSINESS",
+            profile_picture_url: profileRes.data.profile_picture_url || "",
+            media_count: profileRes.data.media_count || 0,
+            followers_count: 0,
+            follows_count: 0,
+          };
         }
+      } catch (profileErr: any) {
+        console.warn("Direct Instagram profile fetch failed:", profileErr.message);
       }
     }
 
-    // Secondary fallback check if not in /me/accounts
+    // 3b. Fallback to Facebook Pages inspection (/me/accounts)
     if (!igAccountData) {
-      try {
-        const meRes = await axios.get(`${GRAPH_API_BASE}/me`, {
-          params: {
-            access_token: longLivedToken,
-            fields: "id,name,accounts{id,name,instagram_business_account{id,username,name,profile_picture_url,followers_count,follows_count,media_count}}",
-          },
-        });
-        const accountsList = meRes.data?.accounts?.data;
-        if (accountsList && Array.isArray(accountsList)) {
-          for (const page of accountsList) {
-            if (page.instagram_business_account) {
-              igAccountData = page.instagram_business_account;
-              pageId = page.id;
-              break;
-            }
+      const pagesRes = await axios.get(`${GRAPH_API_BASE}/me/accounts`, {
+        params: {
+          access_token: longLivedToken,
+          fields: "id,name,access_token,instagram_business_account{id,username,name,profile_picture_url,followers_count,follows_count,media_count}",
+        },
+      });
+
+      if (pagesRes.data?.data && Array.isArray(pagesRes.data.data)) {
+        for (const page of pagesRes.data.data) {
+          if (page.instagram_business_account) {
+            igAccountData = page.instagram_business_account;
+            pageId = page.id;
+            break;
           }
         }
-      } catch (meErr: any) {
-        console.warn("Secondary accounts check failed:", meErr.message);
+      }
+
+      if (!igAccountData) {
+        try {
+          const meRes = await axios.get(`${GRAPH_API_BASE}/me`, {
+            params: {
+              access_token: longLivedToken,
+              fields: "id,name,accounts{id,name,instagram_business_account{id,username,name,profile_picture_url,followers_count,follows_count,media_count}}",
+            },
+          });
+          const accountsList = meRes.data?.accounts?.data;
+          if (accountsList && Array.isArray(accountsList)) {
+            for (const page of accountsList) {
+              if (page.instagram_business_account) {
+                igAccountData = page.instagram_business_account;
+                pageId = page.id;
+                break;
+              }
+            }
+          }
+        } catch (meErr: any) {
+          console.warn("Secondary accounts check failed:", meErr.message);
+        }
       }
     }
 
     if (!igAccountData || !igAccountData.id) {
       throw new Error(
-        "No linked Instagram Professional (Business or Creator) account found on your Facebook Pages. Please ensure: 1) Your Instagram account is switched to Professional in the Instagram app, and 2) It is linked to a Facebook Page in Meta Business Suite."
+        "No linked Instagram Professional (Business or Creator) account found. Please ensure: 1) Your Instagram account is switched to Professional in the Instagram app, and 2) It is linked to a Facebook Page in Meta Business Suite if using Facebook mode."
       );
     }
 
@@ -201,13 +295,20 @@ export class InstagramService {
     const accessTokenEncrypted = encryptSensitive(longLivedToken);
 
     // 5. Upsert InstagramAccount record linked to user
-    const permissions = [
-      "instagram_basic",
-      "instagram_content_publish",
-      "instagram_manage_insights",
-      "pages_show_list",
-      "pages_read_engagement",
-    ];
+    const permissions = isDirectInstagram
+      ? [
+          "instagram_business_basic",
+          "instagram_business_content_publish",
+          "instagram_business_manage_messages",
+          "instagram_business_manage_comments",
+        ]
+      : [
+          "instagram_basic",
+          "instagram_content_publish",
+          "instagram_manage_insights",
+          "pages_show_list",
+          "pages_read_engagement",
+        ];
 
     const account = await InstagramAccount.findOneAndUpdate(
       { instagramId: igAccountData.id },
@@ -216,7 +317,7 @@ export class InstagramService {
           userId,
           username: igAccountData.username,
           name: igAccountData.name || igAccountData.username,
-          accountType: "BUSINESS",
+          accountType: igAccountData.account_type === "CREATOR" ? "CREATOR" : "BUSINESS",
           profilePictureUrl: igAccountData.profile_picture_url || "",
           followersCount: igAccountData.followers_count || 0,
           followsCount: igAccountData.follows_count || 0,

@@ -5,12 +5,34 @@
  * npx ts-node scripts/publish-due-posts.ts
  */
 
-import dotenv from "dotenv";
+import fs from "fs";
 import path from "path";
 
-// Load environment variables from backend/.env or root .env
-dotenv.config({ path: path.resolve(__dirname, "../backend/.env") });
-dotenv.config({ path: path.resolve(__dirname, "../.env") });
+// Load environment variables natively without external dotenv dependency
+function loadEnv(filePath: string) {
+  try {
+    if (fs.existsSync(filePath)) {
+      const lines = fs.readFileSync(filePath, "utf-8").split("\n");
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) continue;
+        const eqIdx = trimmed.indexOf("=");
+        if (eqIdx > 0) {
+          const key = trimmed.slice(0, eqIdx).trim();
+          const val = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, "");
+          if (!process.env[key]) {
+            process.env[key] = val;
+          }
+        }
+      }
+    }
+  } catch {
+    // Continue if file cannot be read
+  }
+}
+
+loadEnv(path.resolve(__dirname, "../backend/.env"));
+loadEnv(path.resolve(__dirname, "../.env"));
 
 import { connectDB } from "../backend/src/config/db";
 import { SchedulerService } from "../backend/src/services/schedulerService";

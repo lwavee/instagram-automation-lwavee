@@ -92,15 +92,19 @@ export default function IntegrationsPage() {
     }
   }, []);
 
-  const handleOAuthConnect = async () => {
+  const handleOAuthConnect = async (flow: "instagram" | "facebook" = "instagram") => {
     try {
       setLoading(true);
-      setStatusMsg("Redirecting to official Meta Facebook Login for Business...");
-      const res = await api.getInstagramAuthUrl();
+      setStatusMsg(
+        flow === "instagram"
+          ? "Redirecting directly to Instagram Login for Professionals (No Facebook mediator)..."
+          : "Redirecting to Meta Facebook Login for Business..."
+      );
+      const res = await api.getInstagramAuthUrl(flow);
       if (res?.url) {
         window.location.href = res.url;
       } else {
-        throw new Error("Server did not return a valid Meta OAuth URL.");
+        throw new Error("Server did not return a valid Instagram OAuth URL.");
       }
     } catch (err: any) {
       setStatusMsg(`OAuth Error: ${err.message}`);
@@ -323,7 +327,7 @@ export default function IntegrationsPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={handleOAuthConnect}
+                    onClick={() => handleOAuthConnect("instagram")}
                     isLoading={loading}
                     className="gap-1.5 text-xs"
                   >
@@ -414,15 +418,15 @@ export default function IntegrationsPage() {
                     <Instagram className="w-6 h-6" />
                   </div>
                   <h3 className="text-xl font-bold text-foreground">
-                    Connect Instagram via Official Meta OAuth
+                    Connect via Direct Instagram Login (Professional Accounts)
                   </h3>
                   <p className="text-xs text-muted-foreground leading-relaxed">
-                    Connect in one click using Meta Facebook Login for Business. Authorize your Instagram Business or Creator account to enable automated Reel publishing, scheduled calendar publishing, and real-time insights.
+                    Connect directly with your Instagram credentials on instagram.com. No Facebook Page, Meta Business Suite, or mediator required. Authorize @lw_avee to enable automated Reel publishing, scheduled calendar publishing, and real-time insights.
                   </p>
 
                   <div className="flex flex-wrap items-center gap-2 pt-1 justify-center md:justify-start">
-                    <Badge variant="outline" className="text-[10px]">Official Graph API v21.0</Badge>
-                    <Badge variant="outline" className="text-[10px]">Zero Manual Tokens Required</Badge>
+                    <Badge variant="outline" className="text-[10px] bg-pink-500/10 border-pink-500/30 text-pink-300">Direct Instagram Login</Badge>
+                    <Badge variant="outline" className="text-[10px]">Official Instagram Graph API</Badge>
                     <Badge variant="outline" className="text-[10px]">AES-256-GCM Encrypted</Badge>
                   </div>
                 </div>
@@ -431,15 +435,22 @@ export default function IntegrationsPage() {
                   <Button
                     variant="gradient"
                     size="lg"
-                    onClick={handleOAuthConnect}
+                    onClick={() => handleOAuthConnect("instagram")}
                     isLoading={loading}
                     className="gap-2.5 px-8 py-3 text-sm font-semibold shadow-xl shadow-pink-500/25 transition-all hover:scale-[1.02]"
                   >
                     <Instagram className="w-5 h-5" /> Connect Instagram
                   </Button>
-                  <span className="text-[11px] text-muted-foreground">
-                    Redirects to secure Meta authorization
+                  <span className="text-[11px] text-muted-foreground text-center">
+                    Direct Instagram Login (No Facebook mediator)
                   </span>
+                  <button
+                    type="button"
+                    onClick={() => handleOAuthConnect("facebook")}
+                    className="text-[11px] text-muted-foreground/80 hover:text-foreground underline transition-colors"
+                  >
+                    Or connect via Facebook Page Login →
+                  </button>
                 </div>
               </div>
 
@@ -448,27 +459,26 @@ export default function IntegrationsPage() {
                 <div className="p-4 rounded-xl bg-secondary/30 border border-border/80 space-y-2 text-xs">
                   <h4 className="font-bold text-foreground flex items-center gap-1.5">
                     <ShieldCheck className="w-4 h-4 text-brand-400" />
-                    Account Eligibility Requirements:
+                    Account Requirements:
                   </h4>
                   <ul className="text-[11px] text-muted-foreground space-y-1 list-disc list-inside">
-                    <li>Instagram account must be converted to <strong>Professional</strong> (Business or Creator).</li>
-                    <li>The Instagram profile must be linked to a <strong>Facebook Page</strong> in Meta Business Suite.</li>
-                    <li>You must log in with the Facebook account that owns or manages that Facebook Page.</li>
+                    <li>Instagram account must be a <strong>Professional account</strong> (Creator or Business).</li>
+                    <li>Direct login opens on <strong>instagram.com</strong> (no Facebook Page mediation needed).</li>
+                    <li>60-day long-lived access token is encrypted server-side with AES-256-GCM.</li>
                   </ul>
                 </div>
 
                 <div className="p-4 rounded-xl bg-secondary/30 border border-border/80 space-y-2 text-xs">
                   <h4 className="font-bold text-foreground flex items-center gap-1.5">
                     <Lock className="w-4 h-4 text-emerald-400" />
-                    Permissions Requested:
+                    Direct Permissions Requested:
                   </h4>
                   <div className="flex flex-wrap gap-1.5 pt-1">
                     {[
-                      "instagram_basic",
-                      "instagram_content_publish",
-                      "instagram_manage_insights",
-                      "pages_show_list",
-                      "pages_read_engagement",
+                      "instagram_business_basic",
+                      "instagram_business_content_publish",
+                      "instagram_business_manage_messages",
+                      "instagram_business_manage_comments",
                     ].map((perm) => (
                       <Badge key={perm} variant="outline" className="font-mono text-[10px]">
                         {perm}

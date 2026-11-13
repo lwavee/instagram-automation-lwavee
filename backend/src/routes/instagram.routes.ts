@@ -14,8 +14,9 @@ const router = Router();
 router.get("/auth-url", authenticateToken, (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user ? req.user._id.toString() : "";
-    const url = InstagramService.getOAuthUrl(userId);
-    res.json({ success: true, data: { url } });
+    const flow = (req.query.flow as "instagram" | "facebook") || "instagram";
+    const url = InstagramService.getOAuthUrl(userId, undefined, flow);
+    res.json({ success: true, data: { url, flow } });
   } catch (err: any) {
     res.status(400).json({
       success: false,

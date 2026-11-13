@@ -98,7 +98,7 @@ export const api = {
   reschedulePost: (id: string, data: any) => apiRequest(`/api/calendar/reschedule/${id}`, { method: "PUT", data }),
 
   // Instagram
-  getInstagramAuthUrl: () => apiRequest("/api/instagram/auth-url"),
+  getInstagramAuthUrl: (flow: string = "instagram") => apiRequest(`/api/instagram/auth-url?flow=${flow}`),
   getInstagramAccount: () => apiRequest("/api/instagram/account"),
   connectInstagramToken: (data: any) => apiRequest("/api/instagram/connect-token", { method: "POST", data }),
   disconnectInstagram: () => apiRequest("/api/instagram/disconnect", { method: "POST" }),

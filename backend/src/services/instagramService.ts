@@ -58,12 +58,12 @@ export interface PublishResult {
 
 export class InstagramService {
   /**
-   * Generates direct Instagram OAuth URL (no Facebook mediator) or Facebook Login for Business dialog
+   * Generates official Meta OAuth URL for Instagram Professional accounts using Facebook Login for Business
    */
   public static getOAuthUrl(
     userId?: string,
     redirectUri?: string,
-    flow: "instagram" | "facebook" = "instagram"
+    flow: "meta_business" | "instagram_standalone" = "meta_business"
   ): string {
     const appId = process.env.INSTAGRAM_APP_ID;
     if (!appId) {
@@ -74,8 +74,8 @@ export class InstagramService {
     const state = userId ? generateOAuthState(userId) : "";
     const configId = process.env.INSTAGRAM_CONFIG_ID;
 
-    // Direct Instagram Login for Professionals (NO Facebook mediator, NO Facebook Pages selection)
-    if (flow === "instagram" || !flow) {
+    // 1. Standalone Instagram App ID flow (only valid when using dedicated Instagram App IDs)
+    if (flow === "instagram_standalone") {
       const scopes = [
         "instagram_business_basic",
         "instagram_business_content_publish",
@@ -88,7 +88,8 @@ export class InstagramService {
       )}&response_type=code&scope=${encodeURIComponent(scopes)}&state=${state}`;
     }
 
-    // Facebook Login for Business flow (legacy / optional)
+    // 2. Official Meta OAuth flow for Instagram Professional accounts (Default)
+    // Uses Meta Facebook Login for Business with config_id to connect Instagram Professional accounts
     if (configId) {
       return `https://www.facebook.com/v21.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(
         callback

@@ -92,19 +92,15 @@ export default function IntegrationsPage() {
     }
   }, []);
 
-  const handleOAuthConnect = async (flow: "instagram" | "facebook" = "instagram") => {
+  const handleOAuthConnect = async (flow: "meta_business" | "instagram_standalone" = "meta_business") => {
     try {
       setLoading(true);
-      setStatusMsg(
-        flow === "instagram"
-          ? "Redirecting directly to Instagram Login for Professionals (No Facebook mediator)..."
-          : "Redirecting to Meta Facebook Login for Business..."
-      );
+      setStatusMsg("Redirecting to official Meta authorization for Instagram @lw_avee...");
       const res = await api.getInstagramAuthUrl(flow);
       if (res?.url) {
         window.location.href = res.url;
       } else {
-        throw new Error("Server did not return a valid Instagram OAuth URL.");
+        throw new Error("Server did not return a valid Meta OAuth URL.");
       }
     } catch (err: any) {
       setStatusMsg(`OAuth Error: ${err.message}`);
@@ -327,7 +323,7 @@ export default function IntegrationsPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => handleOAuthConnect("instagram")}
+                    onClick={() => handleOAuthConnect("meta_business")}
                     isLoading={loading}
                     className="gap-1.5 text-xs"
                   >
@@ -418,15 +414,15 @@ export default function IntegrationsPage() {
                     <Instagram className="w-6 h-6" />
                   </div>
                   <h3 className="text-xl font-bold text-foreground">
-                    Connect via Direct Instagram Login (Professional Accounts)
+                    Connect Instagram Professional Account (@lw_avee)
                   </h3>
                   <p className="text-xs text-muted-foreground leading-relaxed">
-                    Connect directly with your Instagram credentials on instagram.com. No Facebook Page, Meta Business Suite, or mediator required. Authorize @lw_avee to enable automated Reel publishing, scheduled calendar publishing, and real-time insights.
+                    Connect in one click using Meta's official OAuth authorization. Authorize your Instagram Professional (Business or Creator) account to enable automated Reel publishing, scheduled calendar publishing, and real-time insights.
                   </p>
 
                   <div className="flex flex-wrap items-center gap-2 pt-1 justify-center md:justify-start">
-                    <Badge variant="outline" className="text-[10px] bg-pink-500/10 border-pink-500/30 text-pink-300">Direct Instagram Login</Badge>
-                    <Badge variant="outline" className="text-[10px]">Official Instagram Graph API</Badge>
+                    <Badge variant="outline" className="text-[10px]">Official Meta Graph API v21.0</Badge>
+                    <Badge variant="outline" className="text-[10px]">Instagram Professional</Badge>
                     <Badge variant="outline" className="text-[10px]">AES-256-GCM Encrypted</Badge>
                   </div>
                 </div>
@@ -435,22 +431,15 @@ export default function IntegrationsPage() {
                   <Button
                     variant="gradient"
                     size="lg"
-                    onClick={() => handleOAuthConnect("instagram")}
+                    onClick={() => handleOAuthConnect("meta_business")}
                     isLoading={loading}
                     className="gap-2.5 px-8 py-3 text-sm font-semibold shadow-xl shadow-pink-500/25 transition-all hover:scale-[1.02]"
                   >
                     <Instagram className="w-5 h-5" /> Connect Instagram
                   </Button>
                   <span className="text-[11px] text-muted-foreground text-center">
-                    Direct Instagram Login (No Facebook mediator)
+                    Redirects to secure Meta authorization
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => handleOAuthConnect("facebook")}
-                    className="text-[11px] text-muted-foreground/80 hover:text-foreground underline transition-colors"
-                  >
-                    Or connect via Facebook Page Login →
-                  </button>
                 </div>
               </div>
 

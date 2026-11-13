@@ -91,20 +91,8 @@ describe("Instagram OAuth Connection & Security", () => {
   });
 
   describe("OAuth URL & State Cryptography", () => {
-    it("generates direct Instagram OAuth URL for Professional accounts (no Facebook mediator)", () => {
-      const url = InstagramService.getOAuthUrl(testUserId, undefined, "instagram");
-
-      expect(url).toContain("https://www.instagram.com/oauth/authorize");
-      expect(url).toContain("client_id=1442580534699263");
-      expect(url).toContain("enable_fb_login=0");
-      expect(url).toContain("response_type=code");
-      expect(url).toContain("state=");
-      expect(url).toContain("instagram_business_basic");
-      expect(url).toContain("instagram_business_content_publish");
-    });
-
-    it("generates a valid Facebook OAuth URL when facebook flow is requested", () => {
-      const url = InstagramService.getOAuthUrl(testUserId, undefined, "facebook");
+    it("generates a valid Meta OAuth URL with configuration ID and signed state by default", () => {
+      const url = InstagramService.getOAuthUrl(testUserId);
 
       expect(url).toContain("https://www.facebook.com/v21.0/dialog/oauth");
       expect(url).toContain("client_id=1442580534699263");
@@ -113,14 +101,24 @@ describe("Instagram OAuth Connection & Security", () => {
       expect(url).toContain("state=");
     });
 
-    it("falls back to explicit scopes if config_id is not configured in facebook flow", () => {
+    it("falls back to explicit scopes if config_id is not configured", () => {
       delete process.env.INSTAGRAM_CONFIG_ID;
-      const url = InstagramService.getOAuthUrl(testUserId, undefined, "facebook");
+      const url = InstagramService.getOAuthUrl(testUserId);
 
       expect(url).not.toContain("config_id=");
       expect(url).toContain("scope=");
       expect(url).toContain("instagram_basic");
       expect(url).toContain("instagram_content_publish");
+    });
+
+    it("generates direct Instagram OAuth URL when standalone Instagram flow is requested", () => {
+      const url = InstagramService.getOAuthUrl(testUserId, undefined, "instagram_standalone");
+
+      expect(url).toContain("https://www.instagram.com/oauth/authorize");
+      expect(url).toContain("client_id=1442580534699263");
+      expect(url).toContain("enable_fb_login=0");
+      expect(url).toContain("response_type=code");
+      expect(url).toContain("state=");
     });
 
     it("throws error if INSTAGRAM_APP_ID is missing", () => {
@@ -158,20 +156,9 @@ describe("Instagram OAuth Connection & Security", () => {
       expect(res.status).toBe(401);
     });
 
-    it("returns 200 with direct Instagram OAuth URL for authenticated users", async () => {
+    it("returns 200 with Meta OAuth URL for authenticated users", async () => {
       const res = await request(app)
         .get("/api/instagram/auth-url")
-        .set("Authorization", `Bearer ${authToken}`);
-
-      expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
-      expect(res.body.data.url).toContain("instagram.com/oauth/authorize");
-      expect(res.body.data.url).toContain("enable_fb_login=0");
-    });
-
-    it("returns 200 with Facebook OAuth URL when flow=facebook", async () => {
-      const res = await request(app)
-        .get("/api/instagram/auth-url?flow=facebook")
         .set("Authorization", `Bearer ${authToken}`);
 
       expect(res.status).toBe(200);

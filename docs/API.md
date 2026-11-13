@@ -34,3 +34,4 @@ All requests must use `Content-Type: application/json` and provide `Authorizatio
 
 ## Internal Cloud Scheduler (`/api/internal/scheduler`)
 - `POST /api/internal/scheduler/run` — Secured endpoint called by GitHub Actions cron every 15 minutes. Requires `x-scheduler-secret`.
+

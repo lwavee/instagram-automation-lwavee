@@ -42,3 +42,4 @@ NEXT_PUBLIC_BACKEND_URL=https://<your-backend>.onrender.com
 BACKEND_API_URL=https://<your-backend>.onrender.com
 SCHEDULER_SECRET=<same_secret_as_render>
 ```
+

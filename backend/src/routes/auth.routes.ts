@@ -28,8 +28,9 @@ router.post(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { name, email, password, role } = req.body;
+      const normalizedEmail = email.toLowerCase().trim();
 
-      const existingUser = await User.findOne({ email });
+      const existingUser = await User.findOne({ email: normalizedEmail });
       if (existingUser) {
         res.status(409).json({
           success: false,
@@ -41,7 +42,7 @@ router.post(
       const passwordHash = await hashPassword(password);
       const user = await User.create({
         name,
-        email,
+        email: normalizedEmail,
         passwordHash,
         role: role || "admin",
       });
@@ -90,8 +91,9 @@ router.post(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { email, password } = req.body;
+      const normalizedEmail = (email || "").toLowerCase().trim();
 
-      const user = await User.findOne({ email });
+      const user = await User.findOne({ email: normalizedEmail });
       if (!user || !user.isActive) {
         res.status(401).json({
           success: false,

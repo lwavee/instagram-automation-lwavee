@@ -31,3 +31,4 @@ export interface IAICaptionResponse {
   suggestedReelDuration?: number;
   modelUsed: string;
 }
+

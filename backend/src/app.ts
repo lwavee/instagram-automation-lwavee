@@ -24,6 +24,7 @@ import automationRoutes from "./routes/automation.routes";
 import integrationsRoutes from "./routes/integrations.routes";
 import settingsRoutes from "./routes/settings.routes";
 import webhooksRoutes from "./routes/webhooks.routes";
+import internalRoutes from "./routes/internal.routes";
 
 export function createApp(): Application {
   const app = express();
@@ -62,7 +63,7 @@ export function createApp(): Application {
       },
       credentials: true,
       methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-      allowedHeaders: ["Content-Type", "Authorization", "x-n8n-secret", "x-n8n-signature"],
+      allowedHeaders: ["Content-Type", "Authorization", "x-n8n-secret", "x-n8n-signature", "x-scheduler-secret"],
     })
   );
 
@@ -118,6 +119,7 @@ export function createApp(): Application {
   app.use("/api/integrations", integrationsRoutes);
   app.use("/api/settings", settingsRoutes);
   app.use("/api/webhooks", webhooksRoutes);
+  app.use("/api/internal", internalRoutes);
 
   // 8. 404 handler for undefined API routes
   app.use("/api/*", (_req: Request, res: Response) => {

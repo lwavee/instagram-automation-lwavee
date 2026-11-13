@@ -22,14 +22,14 @@ jobs:
         run: |
           echo "Triggering cloud scheduler at $(date -u +'%Y-%m-%dT%H:%M:%SZ')..."
           
-          if [ -z "${{ secrets.BACKEND_API_URL }}" ]; then
-            echo "::error::BACKEND_API_URL secret is not set in GitHub repository secrets."
-            exit 1
-          fi
-
-          if [ -z "${{ secrets.SCHEDULER_SECRET }}" ]; then
-            echo "::error::SCHEDULER_SECRET secret is not set in GitHub repository secrets."
-            exit 1
+          if [ -z "${{ secrets.BACKEND_API_URL }}" ] || [ -z "${{ secrets.SCHEDULER_SECRET }}" ]; then
+            echo "::notice title=Scheduler Secrets Required::BACKEND_API_URL and/or SCHEDULER_SECRET are not configured in GitHub Secrets yet."
+            echo "To enable automated Instagram publishing without local computer dependency:"
+            echo "1. Go to your GitHub repository -> Settings -> Secrets and variables -> Actions"
+            echo "2. Add secret: BACKEND_API_URL (e.g. https://instagram-automation-lwavee.onrender.com)"
+            echo "3. Add secret: SCHEDULER_SECRET (e.g. development_scheduler_secret_key_change_in_production)"
+            echo "Skipping this cycle cleanly until secrets are configured."
+            exit 0
           fi
 
           ENDPOINT="${{ secrets.BACKEND_API_URL }}/api/internal/scheduler/run"
@@ -52,3 +52,4 @@ jobs:
           else
             echo "::warning::Backend reported non-success or empty response."
           fi
+

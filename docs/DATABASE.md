@@ -35,3 +35,4 @@
 
 8. **`apiIntegrations`**
    - Encrypted third-party credentials (OpenRouter, Cloudinary, Meta) using AES-256-GCM.
+

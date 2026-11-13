@@ -51,3 +51,4 @@
 5. **Approval Workflow Gate**:
    - Every AI-generated post enters `PENDING_APPROVAL`.
    - Content cannot be queued, scheduled, or published until a human explicitly reviews and approves it.
+

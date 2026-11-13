@@ -25,3 +25,4 @@ When you connect via LWAVEE's **Connect Instagram** button:
 2. Select your Facebook Page and linked Instagram Professional account.
 3. LWAVEE automatically exchanges the authorization code for a **60-day long-lived access token** via `fb_exchange_token`.
 4. The token is encrypted using AES-256-GCM before saving to MongoDB Atlas.
+

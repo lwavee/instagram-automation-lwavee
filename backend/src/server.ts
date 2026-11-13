@@ -21,15 +21,16 @@ async function bootstrap() {
   // 3. Connect to MongoDB (awaited before database-dependent background workers start)
   await connectDB();
 
-  // Seed default admin user if database is fresh and empty
+  // Seed / guarantee default admin user exists
   if (mongoose.connection.readyState === 1) {
     try {
-      const userCount = await User.countDocuments();
-      if (userCount === 0) {
+      const adminEmail = "avee@learnwithavee.com";
+      const existingUser = await User.findOne({ email: adminEmail });
+      if (!existingUser) {
         const passwordHash = await hashPassword("password123");
         await User.create({
           name: "Avee Lohar",
-          email: "avee@learnwithavee.com",
+          email: adminEmail,
           passwordHash,
           role: "admin",
           isActive: true,

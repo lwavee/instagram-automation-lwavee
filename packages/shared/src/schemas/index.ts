@@ -31,3 +31,4 @@ export const ApprovalDecisionSchema = z.object({
   decision: z.enum(["APPROVED", "REJECTED"]),
   notes: z.string().max(500).optional(),
 });
+

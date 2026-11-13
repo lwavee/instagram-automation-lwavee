@@ -40,3 +40,4 @@ export interface IInstagramMetrics {
   totalComments: number;
   engagementRate: number;
 }
+

@@ -41,3 +41,4 @@ export interface IContentPost {
   createdAt: string | Date;
   updatedAt: string | Date;
 }
+

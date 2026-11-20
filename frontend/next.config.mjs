@@ -7,6 +7,10 @@ const __dirname = path.dirname(__filename);
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   outputFileTracingRoot: path.join(__dirname, '../'),
+  async rewrites() {
+    const backend = (process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000').replace(/\/$/, '');
+    return [{ source: '/api/:path*', destination: `${backend}/api/:path*` }];
+  },
   images: {
     remotePatterns: [
       {

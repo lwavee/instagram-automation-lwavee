@@ -8,21 +8,14 @@ export function errorHandler(
 ) {
   // Ensure we don't log passwords or sensitive tokens
   const statusCode = err.statusCode || err.status || 500;
-  const message = err.message || "An unexpected internal server error occurred.";
-
-  if (process.env.NODE_ENV !== "production") {
-    console.error("🔴 Server Error:", err);
-  } else {
-    console.error(`🔴 Server Error: [Status ${statusCode}] ${message}`);
-  }
+  const message = statusCode >= 500 ? "An internal server error occurred." : (err.publicMessage ||
+    (statusCode === 413 ? "Request is too large." : "The request could not be processed."));
+  if (statusCode >= 500) console.error(`API request failed (HTTP ${statusCode}).`);
 
   res.status(statusCode).json({
     success: false,
     error: {
-      message: statusCode === 500 && process.env.NODE_ENV === "production"
-        ? "An internal server error occurred. Please try again later."
-        : message,
-      ...(process.env.NODE_ENV !== "production" ? { stack: err.stack } : {}),
+      message,
     },
   });
 }

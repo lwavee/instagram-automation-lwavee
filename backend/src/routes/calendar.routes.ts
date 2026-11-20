@@ -1,30 +1,42 @@
 import { Router, Response, NextFunction } from "express";
 import { z } from "zod";
-import { authenticateToken, AuthenticatedRequest } from "../middleware/auth";
+import { Types } from "mongoose";
+import { authenticateToken, AuthenticatedRequest, requireRole } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { SocialPost } from "../models/SocialPost";
 import { ContentSchedule } from "../models/ContentSchedule";
+import { objectId, publishTime } from "../services/publishInput";
+import { postAccess, publishableStatuses } from "../services/publishingService";
 
 const router = Router();
 
 const rescheduleSchema = z.object({
-  newPublishTime: z.string().datetime(),
-  timezone: z.string().default("Asia/Kolkata"),
+  newPublishTime: publishTime.refine((value) => Date.parse(value) > Date.now(), "Choose a future time."),
+  timezone: z.string().max(80).refine((value) => {
+    try { new Intl.DateTimeFormat("en", { timeZone: value }); return true; }
+    catch { return false; }
+  }).default("Asia/Kolkata"),
 });
 
 // GET /api/calendar/events
 router.get(
   "/events",
   authenticateToken,
+  requireRole(["admin"]),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { start, end } = req.query as Record<string, string>;
 
       const query: any = {
+        ...postAccess(req.user!._id as Types.ObjectId),
         scheduledPublishTime: { $exists: true, $ne: null },
       };
 
       if (start && end) {
+        if (!publishTime.safeParse(start).success || !publishTime.safeParse(end).success) {
+          res.status(400).json({ success: false, error: { message: "Invalid calendar date range." } });
+          return;
+        }
         query.scheduledPublishTime = {
           $gte: new Date(start),
           $lte: new Date(end),
@@ -61,24 +73,29 @@ router.get(
 router.put(
   "/reschedule/:id",
   authenticateToken,
+  requireRole(["admin"]),
   validate(rescheduleSchema),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { id } = req.params;
       const { newPublishTime, timezone } = req.body;
 
-      const post = await SocialPost.findById(id);
-      if (!post) {
-        res.status(404).json({ success: false, error: { message: "Scheduled post not found." } });
+      if (!objectId.safeParse(id).success) {
+        res.status(400).json({ success: false, error: { message: "Invalid post ID." } });
         return;
       }
-
       const targetDate = new Date(newPublishTime);
-      post.scheduledPublishTime = targetDate;
-      if (post.status === "failed") {
-        post.status = "scheduled"; // reset status if retrying
+      const post = await SocialPost.findOneAndUpdate({
+        _id: id, ...postAccess(req.user!._id as Types.ObjectId), status: { $in: publishableStatuses },
+        publishSubmittedAt: null, instagramPostId: { $in: [null, ""] }, facebookPostId: { $in: [null, ""] },
+      }, {
+        $set: { scheduledPublishTime: targetDate, status: "scheduled", retryCount: 0 },
+        $unset: { publishMode: "", nextAttemptAt: "", processingDeadline: "", instagramMediaContainerId: "", instagramChildContainerIds: "" },
+      }, { new: true });
+      if (!post) {
+        res.status(409).json({ success: false, error: { message: "This post is unavailable or cannot be rescheduled." } });
+        return;
       }
-      await post.save();
 
       await ContentSchedule.findOneAndUpdate(
         { socialPostId: post._id },

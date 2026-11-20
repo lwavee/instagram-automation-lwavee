@@ -1,12 +1,15 @@
 import { Router, Response, NextFunction } from "express";
 import { z } from "zod";
-import { authenticateToken, AuthenticatedRequest } from "../middleware/auth";
+import { Types } from "mongoose";
+import { authenticateToken, AuthenticatedRequest, requireRole } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { GeneratedScript } from "../models/GeneratedScript";
 import { SocialPost } from "../models/SocialPost";
 import { AIService } from "../services/aiService";
 import { ActivityLog } from "../models/ActivityLog";
 import { Notification } from "../models/Notification";
+import { objectId, publishInput, publishTime, validateMedia } from "../services/publishInput";
+import { requirePublishingAccount } from "../services/publishingService";
 
 const router = Router();
 
@@ -217,8 +220,19 @@ router.put(
 router.post(
   "/:id/create-post",
   authenticateToken,
+  requireRole(["admin"]),
+  validate(z.object({
+    mediaUrl: z.string().url(),
+    coverImageUrl: z.string().optional(),
+    scheduledPublishTime: publishTime.refine((value) => Date.parse(value) > Date.now(), "Choose a future time.").optional(),
+    isAutoPublish: z.boolean().default(false),
+  })),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
+      if (!objectId.safeParse(req.params.id).success) {
+        res.status(400).json({ success: false, error: { message: "Invalid script ID." } });
+        return;
+      }
       const script = await GeneratedScript.findById(req.params.id);
       if (!script) {
         res.status(404).json({ success: false, error: { message: "Script not found" } });
@@ -226,17 +240,27 @@ router.post(
       }
 
       const { mediaUrl, coverImageUrl, scheduledPublishTime, isAutoPublish = false } = req.body;
+      const userId = req.user!._id as Types.ObjectId;
+      const account = await requirePublishingAccount(userId);
+      const media = publishInput.safeParse({
+        mediaType: script.format === "REEL" ? "REELS" : "VIDEO",
+        caption: [script.caption, script.cta].filter(Boolean).join("\n\n"),
+        hashtags: script.hashtags, mediaUrl, coverImageUrl,
+      });
+      const issue = media.success ? validateMedia(media.data) : "Enter a valid public HTTPS media URL and caption.";
+      if (!media.success || issue) {
+        res.status(400).json({ success: false, error: { message: issue } });
+        return;
+      }
 
       const post = await SocialPost.create({
+        ...media.data,
+        userId,
+        instagramAccountId: account?._id,
         scriptId: script._id,
-        mediaType: script.format === "REEL" ? "REELS" : "VIDEO",
         title: script.reelTitle,
-        caption: `${script.caption}\n\n${script.cta}`,
-        hashtags: script.hashtags,
-        mediaUrl: mediaUrl || "https://res.cloudinary.com/demo/video/upload/sample.mp4",
-        coverImageUrl: coverImageUrl || "",
         status: scheduledPublishTime ? "scheduled" : "draft",
-        isAutoPublish: isAutoPublish && (req.user?.preferences?.autoPublishEnabled || false),
+        isAutoPublish: Boolean(scheduledPublishTime && account && isAutoPublish && req.user?.preferences.autoPublishEnabled),
         scheduledPublishTime: scheduledPublishTime ? new Date(scheduledPublishTime) : undefined,
       });
 

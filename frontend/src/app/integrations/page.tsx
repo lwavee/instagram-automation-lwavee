@@ -30,17 +30,12 @@ export default function IntegrationsPage() {
   const [loading, setLoading] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
   const [activeTab, setActiveTab] = useState<"ai" | "instagram" | "storage">("instagram");
-  const [showManualForm, setShowManualForm] = useState(false);
+  const [connectionHealth, setConnectionHealth] = useState("disconnected");
 
   // AI Configuration inputs
   const [selectedProvider, setSelectedProvider] = useState<"gemini" | "openai" | "openrouter">("gemini");
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [selectedModel, setSelectedModel] = useState("gemini-1.5-flash");
-
-  // Instagram Manual Token input (fallback)
-  const [igId, setIgId] = useState("");
-  const [igUsername, setIgUsername] = useState("");
-  const [igToken, setIgToken] = useState("");
 
   const loadIntegrations = async () => {
     try {
@@ -54,7 +49,8 @@ export default function IntegrationsPage() {
         setAiProviders(aiRes.providers);
       }
 
-      if (igRes?.isConnected && igRes?.account) {
+      setConnectionHealth(igRes?.health || "disconnected");
+      if (igRes?.account) {
         setIgAccount(igRes.account);
       } else {
         setIgAccount(null);
@@ -73,30 +69,25 @@ export default function IntegrationsPage() {
     if (typeof window !== "undefined") {
       const searchParams = new URLSearchParams(window.location.search);
       const connected = searchParams.get("connected");
-      const username = searchParams.get("username");
       const error = searchParams.get("error");
 
       if (connected === "true") {
         setActiveTab("instagram");
-        setStatusMsg(
-          username
-            ? `🎉 Success! Instagram account @${username} connected successfully via official Meta OAuth.`
-            : "🎉 Success! Instagram account connected successfully via Meta OAuth."
-        );
+        setStatusMsg("Instagram and Facebook Page connected.");
         window.history.replaceState({}, document.title, window.location.pathname);
       } else if (error) {
         setActiveTab("instagram");
-        setStatusMsg(`❌ Meta Authorization Error: ${decodeURIComponent(error)}`);
+        setStatusMsg(`❌ Meta Authorization Error: ${error}`);
         window.history.replaceState({}, document.title, window.location.pathname);
       }
     }
   }, []);
 
-  const handleOAuthConnect = async (flow: "meta_business" | "instagram_standalone" = "meta_business") => {
+  const handleOAuthConnect = async () => {
     try {
       setLoading(true);
-      setStatusMsg("Redirecting to official Meta authorization for Instagram @lw_avee...");
-      const res = await api.getInstagramAuthUrl(flow);
+      setStatusMsg("Opening Meta authorization...");
+      const res = await api.getInstagramAuthUrl();
       if (res?.url) {
         window.location.href = res.url;
       } else {
@@ -111,7 +102,7 @@ export default function IntegrationsPage() {
   const handleDisconnectInstagram = async () => {
     if (
       !confirm(
-        "Are you sure you want to disconnect this Instagram account? Automatic publishing and analytics sync will be stopped."
+        "Disconnect the Instagram account and Facebook Page from this dashboard?"
       )
     ) {
       return;
@@ -119,9 +110,8 @@ export default function IntegrationsPage() {
 
     try {
       setLoading(true);
-      await api.disconnectInstagram();
-      setIgAccount(null);
-      setStatusMsg("Instagram account disconnected successfully.");
+      const result = await api.disconnectInstagram();
+      setStatusMsg(result.message);
       await loadIntegrations();
     } catch (err: any) {
       setStatusMsg(`Disconnect error: ${err.message}`);
@@ -179,25 +169,16 @@ export default function IntegrationsPage() {
     }
   };
 
-  const handleConnectInstagramManual = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!igId || !igUsername || !igToken) {
-      setStatusMsg("Please enter Instagram ID, username, and token.");
-      return;
-    }
-
+  const checkMetaHealth = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      await api.connectInstagramToken({
-        instagramId: igId,
-        username: igUsername,
-        accessToken: igToken,
-      });
-      setStatusMsg("Instagram account connected and encrypted successfully!");
-      setIgToken("");
-      loadIntegrations();
-    } catch (err: any) {
-      setStatusMsg(`Instagram connection error: ${err.message}`);
+      const result = await api.checkMetaHealth();
+      setConnectionHealth(result.health);
+      setIgAccount(result.account);
+      setStatusMsg("Meta confirmed the current grant and Page access.");
+    } catch (error) {
+      setStatusMsg(error instanceof Error ? error.message : "Meta authorization check failed.");
+      await loadIntegrations();
     } finally {
       setLoading(false);
     }
@@ -282,276 +263,37 @@ export default function IntegrationsPage() {
 
       {/* TAB 1: Instagram Graph API */}
       {activeTab === "instagram" && (
-        <div className="space-y-6">
-          {igAccount ? (
-            /* Connected Instagram Account Card */
-            <Card className="border-emerald-500/30 bg-gradient-to-b from-emerald-500/5 via-card/80 to-card">
-              <CardHeader className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border/60 pb-6">
-                <div className="flex items-center gap-4">
-                  {igAccount.profilePictureUrl ? (
-                    <img
-                      src={igAccount.profilePictureUrl}
-                      alt={igAccount.username}
-                      className="w-14 h-14 rounded-full border-2 border-pink-500/40 object-cover shadow-md"
-                    />
-                  ) : (
-                    <div className="w-14 h-14 rounded-full bg-gradient-to-tr from-yellow-500 via-pink-600 to-purple-600 flex items-center justify-center text-white font-bold text-xl shadow-md">
-                      <Instagram className="w-7 h-7" />
-                    </div>
-                  )}
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-bold text-lg text-foreground">
-                        {igAccount.name || igAccount.username}
-                      </h3>
-                      <Badge variant="success" className="gap-1 text-[10px]">
-                        <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                        Connected & Verified
-                      </Badge>
-                      <Badge variant="outline" className="text-[10px] uppercase font-mono">
-                        {igAccount.accountType || "BUSINESS"}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-pink-400 font-medium">@{igAccount.username}</p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">
-                      Instagram Business Account ID: <span className="font-mono">{igAccount.instagramId}</span>
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleOAuthConnect("meta_business")}
-                    isLoading={loading}
-                    className="gap-1.5 text-xs"
-                  >
-                    <RotateCw className="w-3.5 h-3.5" /> Reconnect / Refresh Token
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleDisconnectInstagram}
-                    isLoading={loading}
-                    className="gap-1.5 text-xs text-red-400 hover:text-red-300 border-red-500/30 hover:bg-red-500/10"
-                  >
-                    <X className="w-3.5 h-3.5" /> Disconnect
-                  </Button>
-                </div>
-              </CardHeader>
-
-              {/* Account Metrics Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4">
-                <div className="p-4 rounded-xl border border-border/80 bg-secondary/30">
-                  <span className="text-xs text-muted-foreground block">Followers</span>
-                  <span className="text-xl font-bold text-foreground">
-                    {igAccount.followersCount?.toLocaleString() || "0"}
-                  </span>
-                </div>
-                <div className="p-4 rounded-xl border border-border/80 bg-secondary/30">
-                  <span className="text-xs text-muted-foreground block">Following</span>
-                  <span className="text-xl font-bold text-foreground">
-                    {igAccount.followsCount?.toLocaleString() || "0"}
-                  </span>
-                </div>
-                <div className="p-4 rounded-xl border border-border/80 bg-secondary/30">
-                  <span className="text-xs text-muted-foreground block">Reels & Media</span>
-                  <span className="text-xl font-bold text-foreground">
-                    {igAccount.mediaCount?.toLocaleString() || "0"}
-                  </span>
-                </div>
-              </div>
-
-              {/* Security & Token Health Details */}
-              <div className="p-4 rounded-xl bg-secondary/40 border border-border/80 space-y-3 mt-4 text-xs">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div className="flex items-center gap-2 text-emerald-400 font-semibold">
-                    <ShieldCheck className="w-4 h-4" />
-                    <span>OAuth Security: AES-256-GCM Encrypted Long-Lived Token (60 Days)</span>
-                  </div>
-                  <span className="text-[11px] text-muted-foreground font-mono">
-                    Last Synced: {igAccount.lastSyncedAt ? formatDate(igAccount.lastSyncedAt) : "Just now"}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between text-muted-foreground text-[11px] border-t border-border/60 pt-2">
-                  <span>Token Expiration:</span>
-                  <span className="font-medium text-foreground">
-                    {igAccount.tokenExpiresAt ? formatDate(igAccount.tokenExpiresAt) : "Auto-managed by Meta OAuth"}
-                  </span>
-                </div>
-
-                <div>
-                  <span className="text-[11px] text-muted-foreground block mb-1">
-                    Meta Permissions Granted:
-                  </span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {(igAccount.permissions?.length
-                      ? igAccount.permissions
-                      : [
-                          "instagram_basic",
-                          "instagram_content_publish",
-                          "instagram_manage_insights",
-                          "pages_show_list",
-                          "pages_read_engagement",
-                        ]
-                    ).map((perm: string) => (
-                      <Badge key={perm} variant="outline" className="font-mono text-[10px] bg-secondary/60">
-                        {perm}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </Card>
-          ) : (
-            /* Disconnected / Not-Connected OAuth Banner */
-            <Card className="border-brand-500/30 bg-gradient-to-b from-brand-500/5 via-card/90 to-card space-y-6 p-8">
-              <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-                <div className="space-y-3 max-w-xl text-center md:text-left">
-                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-yellow-500 via-pink-600 to-purple-600 flex items-center justify-center text-white shadow-xl shadow-pink-500/20 mx-auto md:mx-0">
-                    <Instagram className="w-6 h-6" />
-                  </div>
-                  <h3 className="text-xl font-bold text-foreground">
-                    Connect Instagram Professional Account (@lw_avee)
-                  </h3>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    Connect in one click using Meta's official OAuth authorization. Authorize your Instagram Professional (Business or Creator) account to enable automated Reel publishing, scheduled calendar publishing, and real-time insights.
-                  </p>
-
-                  <div className="flex flex-wrap items-center gap-2 pt-1 justify-center md:justify-start">
-                    <Badge variant="outline" className="text-[10px]">Official Meta Graph API v21.0</Badge>
-                    <Badge variant="outline" className="text-[10px]">Instagram Professional</Badge>
-                    <Badge variant="outline" className="text-[10px]">AES-256-GCM Encrypted</Badge>
-                  </div>
-                </div>
-
-                <div className="shrink-0 flex flex-col items-center gap-3">
-                  <Button
-                    variant="gradient"
-                    size="lg"
-                    onClick={() => handleOAuthConnect("meta_business")}
-                    isLoading={loading}
-                    className="gap-2.5 px-8 py-3 text-sm font-semibold shadow-xl shadow-pink-500/25 transition-all hover:scale-[1.02]"
-                  >
-                    <Instagram className="w-5 h-5" /> Connect Instagram
-                  </Button>
-                  <span className="text-[11px] text-muted-foreground text-center">
-                    Redirects to secure Meta authorization
-                  </span>
-                </div>
-              </div>
-
-              {/* Requirements & Permissions Information */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-border/60">
-                <div className="p-4 rounded-xl bg-secondary/30 border border-border/80 space-y-2 text-xs">
-                  <h4 className="font-bold text-foreground flex items-center gap-1.5">
-                    <ShieldCheck className="w-4 h-4 text-brand-400" />
-                    Account Requirements:
-                  </h4>
-                  <ul className="text-[11px] text-muted-foreground space-y-1 list-disc list-inside">
-                    <li>Instagram account must be a <strong>Professional account</strong> (Creator or Business).</li>
-                    <li>Direct login opens on <strong>instagram.com</strong> (no Facebook Page mediation needed).</li>
-                    <li>60-day long-lived access token is encrypted server-side with AES-256-GCM.</li>
-                  </ul>
-                </div>
-
-                <div className="p-4 rounded-xl bg-secondary/30 border border-border/80 space-y-2 text-xs">
-                  <h4 className="font-bold text-foreground flex items-center gap-1.5">
-                    <Lock className="w-4 h-4 text-emerald-400" />
-                    Direct Permissions Requested:
-                  </h4>
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    {[
-                      "instagram_business_basic",
-                      "instagram_business_content_publish",
-                      "instagram_business_manage_messages",
-                      "instagram_business_manage_comments",
-                    ].map((perm) => (
-                      <Badge key={perm} variant="outline" className="font-mono text-[10px]">
-                        {perm}
-                      </Badge>
-                    ))}
-                  </div>
-                  <p className="text-[10px] text-muted-foreground pt-1">
-                    Used strictly for media publishing & insights. No private DMs or passwords accessed.
-                  </p>
-                </div>
-              </div>
-
-              {/* Developer Collapsible Manual Entry (Hidden from normal UI) */}
-              <div className="pt-2 border-t border-border/40">
-                <button
-                  type="button"
-                  onClick={() => setShowManualForm(!showManualForm)}
-                  className="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-1.5 transition-colors"
-                >
-                  <Lock className="w-3 h-3" />
-                  <span>{showManualForm ? "Hide Advanced Manual Token Entry" : "Advanced: Manual Token Entry (Developer / Fallback Only)"}</span>
-                  {showManualForm ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                </button>
-
-                {showManualForm && (
-                  <form onSubmit={handleConnectInstagramManual} className="space-y-3 mt-4 max-w-lg p-4 rounded-xl bg-secondary/20 border border-border/60">
-                    <p className="text-[11px] text-amber-400">
-                      ⚠️ Note: For normal use, click &quot;Connect Instagram&quot; above instead. This manual form is only for System User Access Tokens from Meta Business Suite.
-                    </p>
-
-                    <div>
-                      <label className="text-xs font-semibold text-foreground block mb-1">
-                        Instagram Business Account ID:
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={igId}
-                        onChange={(e) => setIgId(e.target.value)}
-                        placeholder="e.g. 17841405309211844"
-                        className="w-full px-3 py-2 text-xs rounded-lg bg-secondary/50 border border-border text-foreground font-mono"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-xs font-semibold text-foreground block mb-1">
-                        Username (@handle):
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={igUsername}
-                        onChange={(e) => setIgUsername(e.target.value)}
-                        placeholder="e.g. learnwithavee"
-                        className="w-full px-3 py-2 text-xs rounded-lg bg-secondary/50 border border-border text-foreground"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-xs font-semibold text-foreground block mb-1">
-                        Access Token (SUAT):
-                      </label>
-                      <input
-                        type="password"
-                        required
-                        value={igToken}
-                        onChange={(e) => setIgToken(e.target.value)}
-                        placeholder="EAA..."
-                        className="w-full px-3 py-2 text-xs rounded-lg bg-secondary/50 border border-border text-foreground font-mono"
-                      />
-                    </div>
-
-                    <Button variant="outline" size="sm" type="submit" isLoading={loading} className="gap-2 text-xs">
-                      <Save className="w-3.5 h-3.5" /> Save Manual Token
-                    </Button>
-                  </form>
-                )}
-              </div>
-            </Card>
+        <Card className="p-6 space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold">Instagram and Facebook Page</h2>
+            <p className="text-sm text-muted-foreground">Authorize the configured Page and its linked Instagram professional account in Meta.</p>
+          </div>
+          <Badge variant={connectionHealth === "authorized" ? "success" : "warning"}>
+            {connectionHealth === "authorized" ? "Authorized" : connectionHealth === "reconnect_required" ? "Reconnect required" : "Disconnected"}
+          </Badge>
+          {igAccount && (
+            <dl className="grid grid-cols-[auto,1fr] gap-x-4 gap-y-1 text-sm">
+              <dt>Instagram</dt><dd>@{igAccount.username}</dd>
+              {igAccount.page && <><dt>Facebook Page</dt><dd>{igAccount.page.name || igAccount.page.id} · {igAccount.page.canPublish ? "Publishing authorized" : "Publishing unavailable"}</dd></>}
+              <dt>Followers</dt><dd>{igAccount.followersCount}</dd>
+              <dt>Grant expires</dt><dd>{formatDate(igAccount.tokenExpiresAt)}</dd>
+              <dt>Last checked</dt><dd>{formatDate(igAccount.lastSyncedAt)}</dd>
+            </dl>
           )}
-        </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="gradient" onClick={handleOAuthConnect} isLoading={loading}>
+              {igAccount ? "Reconnect with Meta" : "Connect with Meta"}
+            </Button>
+            {igAccount && connectionHealth !== "disconnected" && (
+              <>
+                <Button variant="outline" onClick={checkMetaHealth} disabled={loading}>Check authorization</Button>
+                <Button variant="outline" onClick={handleDisconnectInstagram} disabled={loading}>Disconnect</Button>
+              </>
+            )}
+          </div>
+        </Card>
       )}
 
-      {/* TAB 2: AI Providers */}
       {activeTab === "ai" && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

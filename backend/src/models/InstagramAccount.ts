@@ -10,9 +10,15 @@ export interface IInstagramAccount extends Document {
   followersCount: number;
   followsCount: number;
   mediaCount: number;
-  accessTokenEncrypted: string;
+  accessTokenEncrypted?: string;
+  pageTokenEncrypted?: string;
   tokenExpiresAt?: Date;
   pageId?: string;
+  pageName?: string;
+  pageTasks: string[];
+  authorizationAppId?: string;
+  metaUserId?: string;
+  lastAuthorizedAt?: Date;
   isConnected: boolean;
   lastSyncedAt?: Date;
   permissions: string[];
@@ -67,8 +73,9 @@ const InstagramAccountSchema = new Schema<IInstagramAccount>(
     },
     accessTokenEncrypted: {
       type: String,
-      required: true,
+      select: false,
     },
+    pageTokenEncrypted: { type: String, select: false },
     tokenExpiresAt: {
       type: Date,
     },
@@ -76,6 +83,11 @@ const InstagramAccountSchema = new Schema<IInstagramAccount>(
       type: String,
       default: "",
     },
+    pageName: String,
+    pageTasks: { type: [String], default: [] },
+    authorizationAppId: String,
+    metaUserId: { type: String, select: false },
+    lastAuthorizedAt: Date,
     isConnected: {
       type: Boolean,
       default: true,
@@ -86,13 +98,7 @@ const InstagramAccountSchema = new Schema<IInstagramAccount>(
     },
     permissions: {
       type: [String],
-      default: [
-        "instagram_basic",
-        "instagram_content_publish",
-        "instagram_manage_insights",
-        "pages_show_list",
-        "pages_read_engagement",
-      ],
+      default: [],
     },
   },
   {
@@ -103,6 +109,8 @@ const InstagramAccountSchema = new Schema<IInstagramAccount>(
 InstagramAccountSchema.set("toJSON", {
   transform: (_, ret: any) => {
     delete ret.accessTokenEncrypted;
+    delete ret.pageTokenEncrypted;
+    delete ret.metaUserId;
     return ret;
   },
 });

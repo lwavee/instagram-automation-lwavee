@@ -1,5 +1,5 @@
 import { Router, Response, NextFunction } from "express";
-import { authenticateToken, AuthenticatedRequest } from "../middleware/auth";
+import { authenticateToken, AuthenticatedRequest, requireRole } from "../middleware/auth";
 import { AutomationExecution } from "../models/AutomationExecution";
 import { SchedulerService } from "../services/schedulerService";
 import { ResearchService } from "../services/researchService";
@@ -52,6 +52,7 @@ router.get(
 router.post(
   "/trigger/:workflowCode",
   authenticateToken,
+  requireRole(["admin"]),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     const { workflowCode } = req.params;
     const startTime = Date.now();

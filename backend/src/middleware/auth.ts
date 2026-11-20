@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
+import { randomUUID } from "crypto";
 import { env } from "../config/env";
 import { User, IUser } from "../models/User";
 
@@ -12,12 +13,21 @@ export interface JWTPayload {
   userId: string;
   email: string;
   role: string;
+  sessionVersion?: number;
 }
+
+export const authCookie = {
+  httpOnly: true,
+  secure: env.NODE_ENV === "production",
+  sameSite: "lax" as const,
+  path: "/",
+};
 
 export function generateToken(payload: JWTPayload): string {
   return jwt.sign(payload, env.JWT_SECRET, {
     algorithm: "HS256",
-    expiresIn: "7d",
+    expiresIn: "8h",
+    jwtid: randomUUID(),
   });
 }
 
@@ -36,15 +46,7 @@ export async function authenticateToken(
   next: NextFunction
 ): Promise<void> {
   try {
-    let token: string | undefined;
-
-    // Check Authorization header Bearer token
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      token = authHeader.split(" ")[1];
-    } else if (req.cookies && req.cookies.auth_token) {
-      token = req.cookies.auth_token;
-    }
+    const token = req.cookies?.auth_token;
 
     if (!token) {
       res.status(401).json({
@@ -58,8 +60,8 @@ export async function authenticateToken(
       algorithms: ["HS256"],
     }) as JWTPayload;
 
-    const user = await User.findById(decoded.userId);
-    if (!user || !user.isActive) {
+    const user = await User.findById(decoded.userId).select("+sessionVersion");
+    if (!user || !user.isActive || (user.sessionVersion ?? 0) !== decoded.sessionVersion) {
       res.status(401).json({
         success: false,
         error: { message: "User account not found or deactivated." },

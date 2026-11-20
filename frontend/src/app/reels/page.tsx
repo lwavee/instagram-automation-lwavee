@@ -14,6 +14,7 @@ import {
   Volume2,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { istToUtc } from "@/lib/schedule";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -69,7 +70,7 @@ export default function ReelManagerPage() {
       const mediaUrl = selectedMedia?.url || "https://res.cloudinary.com/demo/video/upload/sample.mp4";
       await api.createPostFromScript(selectedScript._id, {
         mediaUrl,
-        scheduledPublishTime: scheduleTime ? new Date(scheduleTime).toISOString() : undefined,
+        scheduledPublishTime: scheduleTime ? istToUtc(scheduleTime) : undefined,
         isAutoPublish,
       });
 
@@ -301,4 +302,3 @@ export default function ReelManagerPage() {
     </div>
   );
 }
-

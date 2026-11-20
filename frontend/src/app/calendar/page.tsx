@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { formatDate } from "@/lib/utils";
+import { formatIstInput, istToUtc } from "@/lib/schedule";
 
 export default function ContentCalendarPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -59,7 +60,7 @@ export default function ContentCalendarPage() {
     if (!selectedPost || !newDateTime) return;
     try {
       await api.reschedulePost(selectedPost.id, {
-        newPublishTime: new Date(newDateTime).toISOString(),
+        newPublishTime: istToUtc(newDateTime),
         timezone: "Asia/Kolkata",
       });
       setStatusMsg("Post rescheduled successfully!");
@@ -141,11 +142,11 @@ export default function ContentCalendarPage() {
             const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
             const dayEvents = events.filter((e) => {
               if (!e.date) return false;
-              return e.date.startsWith(dateStr);
+              return formatIstInput(e.date).startsWith(dateStr);
             });
 
             const isToday =
-              new Date().toISOString().startsWith(dateStr);
+              formatIstInput(new Date()).startsWith(dateStr);
 
             return (
               <div
@@ -258,4 +259,3 @@ export default function ContentCalendarPage() {
     </div>
   );
 }
-

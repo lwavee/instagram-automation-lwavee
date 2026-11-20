@@ -18,6 +18,7 @@ import {
   Clock,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { istToUtc } from "@/lib/schedule";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -102,7 +103,7 @@ export default function ScriptGeneratorPage() {
     try {
       setLoading(true);
       await api.createPostFromScript(activeScript._id, {
-        scheduledPublishTime: scheduleTime ? new Date(scheduleTime).toISOString() : undefined,
+        scheduledPublishTime: scheduleTime ? istToUtc(scheduleTime) : undefined,
         isAutoPublish,
       });
       setPostModalOpen(false);
@@ -495,4 +496,3 @@ export default function ScriptGeneratorPage() {
     </div>
   );
 }
-

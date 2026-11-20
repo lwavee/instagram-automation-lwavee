@@ -9,7 +9,7 @@ export function verifyN8nWebhook(req: Request, res: Response, next: NextFunction
   const expectedSecret = env.N8N_WEBHOOK_SECRET;
 
   // Direct secret match verification (timing-safe)
-  if (incomingSecret) {
+  if (expectedSecret && typeof incomingSecret === "string") {
     const incomingBuf = Buffer.from(incomingSecret);
     const expectedBuf = Buffer.from(expectedSecret);
 
@@ -22,7 +22,7 @@ export function verifyN8nWebhook(req: Request, res: Response, next: NextFunction
   }
 
   // HMAC SHA-256 signature verification if payload signed
-  if (signature && req.body) {
+  if (expectedSecret && typeof signature === "string" && req.body) {
     const rawBody = JSON.stringify(req.body);
     const computedSignature = crypto
       .createHmac("sha256", expectedSecret)

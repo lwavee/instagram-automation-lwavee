@@ -1,491 +1,220 @@
-import axios from "axios";
-import crypto from "crypto";
-import jwt from "jsonwebtoken";
-import { InstagramAccount } from "../models/InstagramAccount";
-import { decryptSensitive, encryptSensitive } from "../utils/encryption";
-import { ActivityLog } from "../models/ActivityLog";
 import { env } from "../config/env";
+import { InstagramAccount, IInstagramAccount } from "../models/InstagramAccount";
+import { decryptSensitive, encryptSensitive } from "../utils/encryption";
+import { graph, graphBase, MetaError, requiredMetaPermissions } from "./metaGraph";
 
-const GRAPH_API_BASE = "https://graph.facebook.com/v21.0";
-
-export interface OAuthStatePayload {
-  userId: string;
-  nonce: string;
-  type: "meta_instagram_oauth";
+interface InstagramProfile {
+  id: string;
+  username: string;
+  name?: string;
+  profile_picture_url?: string;
+  followers_count?: number;
+  follows_count?: number;
+  media_count?: number;
 }
 
-export function generateOAuthState(userId: string): string {
-  return jwt.sign(
-    {
-      userId,
-      nonce: crypto.randomBytes(16).toString("hex"),
-      type: "meta_instagram_oauth",
-    },
-    env.JWT_SECRET,
-    { expiresIn: "15m" }
-  );
+interface FacebookPage {
+  id: string;
+  name: string;
+  tasks?: string[];
+  access_token?: string;
+  instagram_business_account?: InstagramProfile;
 }
 
-export function verifyOAuthState(state: string): { userId: string } {
-  try {
-    const decoded = jwt.verify(state, env.JWT_SECRET) as OAuthStatePayload;
-    if (!decoded || decoded.type !== "meta_instagram_oauth" || !decoded.userId) {
-      throw new Error("Invalid OAuth state payload structure");
-    }
-    return { userId: decoded.userId };
-  } catch (err: any) {
-    throw new Error(`OAuth state verification failed: ${err.message}`);
+const pageFields = "id,name,tasks,access_token,instagram_business_account{id,username,name,profile_picture_url,followers_count,follows_count,media_count}";
+const digits = /^\d+$/;
+
+function settings() {
+  const { META_APP_ID: appId, META_APP_SECRET: appSecret, META_LOGIN_CONFIG_ID: configId,
+    META_FACEBOOK_PAGE_ID: pageId, META_INSTAGRAM_USERNAME: username } = env;
+  if (!appId || !appSecret || !configId || !env.META_GRAPH_API_VERSION || !pageId || !username ||
+      !digits.test(appId) || !digits.test(configId)) {
+    throw new MetaError("Configure the Meta app, Login for Business configuration, Graph version, and verified Page and Instagram targets.");
   }
+  // OAuth callback is served by Express, so its origin must be the backend host.
+  // FRONTEND_URL is only the post-callback redirect destination.
+  const origin = new URL(env.BACKEND_URL);
+  const redirect = new URL(env.META_REDIRECT_URI || "/api/instagram/callback", origin);
+  if (redirect.origin !== origin.origin || redirect.pathname !== "/api/instagram/callback" ||
+      redirect.search || redirect.hash || redirect.username || redirect.password ||
+      (env.NODE_ENV === "production" && redirect.protocol !== "https:")) {
+    throw new MetaError("Use the dashboard HTTPS URL followed by /api/instagram/callback for Meta OAuth.");
+  }
+  return { appId, appSecret, configId, callback: redirect.href, pageId, username: username.replace(/^@/, "").toLowerCase() };
 }
 
-export interface InstagramPublishParams {
-  accountId: string;
-  mediaType: "REELS" | "IMAGE" | "VIDEO";
-  mediaUrl: string;
-  caption: string;
-  coverImageUrl?: string;
-  shareToFeed?: boolean;
+export function canPublishPage(tasks: string[] = []) {
+  return tasks.includes("CREATE_CONTENT") || tasks.includes("PROFILE_PLUS_CREATE_CONTENT");
 }
 
-export interface PublishResult {
-  success: boolean;
-  instagramPostId?: string;
-  containerId?: string;
-  permalink?: string;
-  error?: string;
-  statusMessage: string;
+async function discoverPage(token: string, pageId: string, username: string) {
+  let after: string | undefined;
+  const cursors = new Set<string>();
+  for (let pageNumber = 0; pageNumber < 100; pageNumber++) {
+    const result: { data?: FacebookPage[]; paging?: { next?: string; cursors?: { after?: string } } } =
+      await graph("GET", "/me/accounts", { fields: pageFields, limit: 100, ...(after && { after }) }, token);
+    const page = result.data?.find((item) => item.id === pageId);
+    if (page) {
+      if (!page.instagram_business_account || !digits.test(page.instagram_business_account.id) ||
+          page.instagram_business_account.username?.toLowerCase() !== username) {
+        throw new MetaError("The selected Facebook Page does not expose the configured Instagram professional account.", false, true);
+      }
+      if (!page.access_token || !canPublishPage(page.tasks)) {
+        throw new MetaError("Grant the account the Page content task and allow the Page in Meta authorization.", false, true);
+      }
+      return { ...page, profile: page.instagram_business_account, pageToken: page.access_token };
+    }
+    if (!result.paging?.next) break;
+    after = result.paging.cursors?.after;
+    if (!after || cursors.has(after)) break;
+    cursors.add(after);
+  }
+  throw new MetaError("The configured Facebook Page was absent from authorized Pages. Check Page access and asset selection.", false, true);
+}
+
+async function checkGrant(token: string, appId: string, appSecret: string) {
+  const result = await graph<{ data?: {
+    app_id?: string; is_valid?: boolean; type?: string; scopes?: string[]; user_id?: string;
+    expires_at?: number; data_access_expires_at?: number;
+  } }>("GET", "/debug_token", { input_token: token }, appId + "|" + appSecret);
+  const grant = result.data;
+  if (!grant?.is_valid || grant.app_id !== appId || grant.type !== "USER" || !grant.user_id || !digits.test(grant.user_id)) {
+    throw new MetaError("Meta returned an invalid or mismatched user grant. Reconnect the account.", false, true);
+  }
+  const permissions = requiredMetaPermissions();
+  const missing = permissions.filter((permission) => !grant.scopes?.includes(permission));
+  if (missing.length) {
+    throw new MetaError("Grant these Meta permissions when reconnecting: " + missing.join(", ") + ".", false, true);
+  }
+  const expiry = [grant.expires_at, grant.data_access_expires_at]
+    .filter((value): value is number => typeof value === "number" && value > 0);
+  const expiresAt = expiry.length ? new Date(Math.min(...expiry) * 1000) : undefined;
+  if (expiresAt && expiresAt.getTime() <= Date.now()) {
+    throw new MetaError("Meta access has expired. Reconnect the account.", false, true);
+  }
+  return { expiresAt, permissions, metaUserId: grant.user_id };
 }
 
 export class InstagramService {
-  /**
-   * Generates official Meta OAuth URL for Instagram Professional accounts using Facebook Login for Business
-   */
-  public static getOAuthUrl(
-    userId?: string,
-    redirectUri?: string,
-    flow: "meta_business" | "instagram_standalone" = "meta_business"
-  ): string {
-    const appId = process.env.INSTAGRAM_APP_ID;
-    if (!appId) {
-      throw new Error("INSTAGRAM_APP_ID is not configured in environment or settings");
-    }
-
-    const callback = redirectUri || env.INSTAGRAM_REDIRECT_URI || `${env.BACKEND_URL}/api/instagram/callback`;
-    const state = userId ? generateOAuthState(userId) : "";
-    const configId = process.env.INSTAGRAM_CONFIG_ID;
-
-    // 1. Standalone Instagram App ID flow (only valid when using dedicated Instagram App IDs)
-    if (flow === "instagram_standalone") {
-      const scopes = [
-        "instagram_business_basic",
-        "instagram_business_content_publish",
-        "instagram_business_manage_messages",
-        "instagram_business_manage_comments",
-      ].join(",");
-
-      return `https://www.instagram.com/oauth/authorize?enable_fb_login=0&force_authentication=1&client_id=${appId}&redirect_uri=${encodeURIComponent(
-        callback
-      )}&response_type=code&scope=${encodeURIComponent(scopes)}&state=${state}`;
-    }
-
-    // 2. Official Meta OAuth flow for Instagram Professional accounts (Default)
-    // Uses Meta Facebook Login for Business with config_id to connect Instagram Professional accounts
-    if (configId) {
-      return `https://www.facebook.com/v21.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(
-        callback
-      )}&config_id=${configId}&state=${state}&response_type=code`;
-    }
-
-    const scopes = [
-      "instagram_basic",
-      "instagram_content_publish",
-      "instagram_manage_insights",
-      "pages_show_list",
-      "pages_read_engagement",
-    ].join(",");
-
-    return `https://www.facebook.com/v21.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(
-      callback
-    )}&scope=${encodeURIComponent(scopes)}&state=${state}&response_type=code`;
+  static getOAuthUrl(state: string): string {
+    const { appId, configId, callback } = settings();
+    graphBase();
+    const url = new URL("https://www.facebook.com/" + env.META_GRAPH_API_VERSION + "/dialog/oauth");
+    url.search = new URLSearchParams({
+      client_id: appId,
+      config_id: configId,
+      redirect_uri: callback,
+      response_type: "code",
+      override_default_response_type: "true",
+      auth_type: "rerequest",
+      state,
+    }).toString();
+    return url.href;
   }
 
-  /**
-   * Exchanges authorization code for long-lived access token, verifies linked Instagram account,
-   * encrypts token with AES-256-GCM, and stores it in MongoDB linked to user.
-   */
-  public static async handleOAuthCallback(
-    code: string,
-    userId: string,
-    redirectUri?: string,
-    userEmail?: string
-  ): Promise<any> {
-    const appId = process.env.INSTAGRAM_APP_ID;
-    const appSecret = process.env.INSTAGRAM_APP_SECRET;
-    const callback = redirectUri || env.INSTAGRAM_REDIRECT_URI || `${env.BACKEND_URL}/api/instagram/callback`;
-
-    if (!appId || !appSecret) {
-      throw new Error("Meta App ID or App Secret is not configured");
-    }
-
-    // Clean authorization code (remove any trailing #_ added by Instagram redirect)
-    const sanitizedCode = code.replace(/#_$/, "");
-
-    let shortLivedToken: string | null = null;
-    let isDirectInstagram = false;
-
-    // 1a. Try direct Instagram OAuth code exchange (api.instagram.com)
+  static async handleOAuthCallback(code: string, userId: string) {
+    const { appId, appSecret, callback, pageId, username } = settings();
+    let shortToken: string | undefined;
     try {
-      const formData = new URLSearchParams();
-      formData.append("client_id", appId);
-      formData.append("client_secret", appSecret);
-      formData.append("grant_type", "authorization_code");
-      formData.append("redirect_uri", callback);
-      formData.append("code", sanitizedCode);
-
-      const igRes = await axios.post("https://api.instagram.com/oauth/access_token", formData, {
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      const result = await graph<{ access_token?: string }>("GET", "/oauth/access_token", {
+        client_id: appId, client_secret: appSecret, redirect_uri: callback, code,
       });
-
-      if (igRes?.data?.access_token) {
-        shortLivedToken = igRes.data.access_token;
-        isDirectInstagram = true;
+      shortToken = result.access_token;
+    } catch (error) {
+      if (error instanceof MetaError && !error.retryable) {
+        throw new MetaError("Meta could not exchange the authorization code. Restart the connection and check the callback configuration.");
       }
-    } catch (igErr: any) {
-      // Direct Instagram exchange not matched, fall through to Facebook Graph API
+      throw error;
     }
+    if (!shortToken) throw new MetaError("Meta did not return a user access token.");
 
-    // 1b. Fallback to Facebook Graph API OAuth exchange if direct Instagram didn't match
-    if (!shortLivedToken) {
-      const tokenRes = await axios.get(`${GRAPH_API_BASE}/oauth/access_token`, {
-        params: {
-          client_id: appId,
-          client_secret: appSecret,
-          redirect_uri: callback,
-          code: sanitizedCode,
-        },
-      });
-      shortLivedToken = tokenRes?.data?.access_token;
-    }
-
-    if (!shortLivedToken) {
-      throw new Error("Failed to receive access token from Meta OAuth exchange");
-    }
-
-    // 2. Exchange short-lived token for 60-day long-lived token
-    let longLivedToken = shortLivedToken;
-    let expiresAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000);
-
-    if (isDirectInstagram) {
-      try {
-        const igLongLivedRes = await axios.get("https://graph.instagram.com/access_token", {
-          params: {
-            grant_type: "ig_exchange_token",
-            client_secret: appSecret,
-            access_token: shortLivedToken,
-          },
-        });
-        if (igLongLivedRes?.data?.access_token) {
-          longLivedToken = igLongLivedRes.data.access_token;
-          const expiresInSeconds = igLongLivedRes.data.expires_in || 5184000;
-          expiresAt = new Date(Date.now() + expiresInSeconds * 1000);
-        }
-      } catch (igExErr: any) {
-        console.warn("Direct Instagram long-lived token exchange warning:", igExErr.message);
-      }
-    } else {
-      try {
-        const longLivedRes = await axios.get(`${GRAPH_API_BASE}/oauth/access_token`, {
-          params: {
-            grant_type: "fb_exchange_token",
-            client_id: appId,
-            client_secret: appSecret,
-            fb_exchange_token: shortLivedToken,
-          },
-        });
-
-        if (longLivedRes.data?.access_token) {
-          longLivedToken = longLivedRes.data.access_token;
-          const expiresInSeconds = longLivedRes.data.expires_in || 5184000;
-          expiresAt = new Date(Date.now() + expiresInSeconds * 1000);
-        }
-      } catch (exchangeErr: any) {
-        console.warn("Could not exchange for long-lived token, utilizing short-lived token:", exchangeErr.message);
-      }
-    }
-
-    // 3. Find connected Instagram Professional account
-    let igAccountData: any = null;
-    let pageId: string = "";
-
-    // 3a. Direct Instagram flow (/me on graph.instagram.com)
-    if (isDirectInstagram) {
-      try {
-        const profileRes = await axios.get("https://graph.instagram.com/v21.0/me", {
-          params: {
-            access_token: longLivedToken,
-            fields: "id,username,name,account_type,profile_picture_url,media_count",
-          },
-        });
-        if (profileRes?.data?.id && profileRes?.data?.username) {
-          igAccountData = {
-            id: profileRes.data.id,
-            username: profileRes.data.username,
-            name: profileRes.data.name || profileRes.data.username,
-            account_type: profileRes.data.account_type || "BUSINESS",
-            profile_picture_url: profileRes.data.profile_picture_url || "",
-            media_count: profileRes.data.media_count || 0,
-            followers_count: 0,
-            follows_count: 0,
-          };
-        }
-      } catch (profileErr: any) {
-        console.warn("Direct Instagram profile fetch failed:", profileErr.message);
-      }
-    }
-
-    // 3b. Fallback to Facebook Pages inspection (/me/accounts)
-    if (!igAccountData) {
-      const pagesRes = await axios.get(`${GRAPH_API_BASE}/me/accounts`, {
-        params: {
-          access_token: longLivedToken,
-          fields: "id,name,access_token,instagram_business_account{id,username,name,profile_picture_url,followers_count,follows_count,media_count}",
-        },
-      });
-
-      if (pagesRes.data?.data && Array.isArray(pagesRes.data.data)) {
-        for (const page of pagesRes.data.data) {
-          if (page.instagram_business_account) {
-            igAccountData = page.instagram_business_account;
-            pageId = page.id;
-            break;
-          }
-        }
-      }
-
-      if (!igAccountData) {
-        try {
-          const meRes = await axios.get(`${GRAPH_API_BASE}/me`, {
-            params: {
-              access_token: longLivedToken,
-              fields: "id,name,accounts{id,name,instagram_business_account{id,username,name,profile_picture_url,followers_count,follows_count,media_count}}",
-            },
-          });
-          const accountsList = meRes.data?.accounts?.data;
-          if (accountsList && Array.isArray(accountsList)) {
-            for (const page of accountsList) {
-              if (page.instagram_business_account) {
-                igAccountData = page.instagram_business_account;
-                pageId = page.id;
-                break;
-              }
-            }
-          }
-        } catch (meErr: any) {
-          console.warn("Secondary accounts check failed:", meErr.message);
-        }
-      }
-    }
-
-    if (!igAccountData || !igAccountData.id) {
-      throw new Error(
-        "No linked Instagram Professional (Business or Creator) account found. Please ensure: 1) Your Instagram account is switched to Professional in the Instagram app, and 2) It is linked to a Facebook Page in Meta Business Suite if using Facebook mode."
-      );
-    }
-
-    // 4. Encrypt access token before storing in MongoDB
-    const accessTokenEncrypted = encryptSensitive(longLivedToken);
-
-    // 5. Upsert InstagramAccount record linked to user
-    const permissions = isDirectInstagram
-      ? [
-          "instagram_business_basic",
-          "instagram_business_content_publish",
-          "instagram_business_manage_messages",
-          "instagram_business_manage_comments",
-        ]
-      : [
-          "instagram_basic",
-          "instagram_content_publish",
-          "instagram_manage_insights",
-          "pages_show_list",
-          "pages_read_engagement",
-        ];
-
-    const account = await InstagramAccount.findOneAndUpdate(
-      { instagramId: igAccountData.id },
-      {
-        $set: {
-          userId,
-          username: igAccountData.username,
-          name: igAccountData.name || igAccountData.username,
-          accountType: igAccountData.account_type === "CREATOR" ? "CREATOR" : "BUSINESS",
-          profilePictureUrl: igAccountData.profile_picture_url || "",
-          followersCount: igAccountData.followers_count || 0,
-          followsCount: igAccountData.follows_count || 0,
-          mediaCount: igAccountData.media_count || 0,
-          accessTokenEncrypted,
-          tokenExpiresAt: expiresAt,
-          pageId,
-          isConnected: true,
-          lastSyncedAt: new Date(),
-          permissions,
-        },
+    const { access_token: token, expires_in: expiresIn } = await graph<{ access_token?: string; expires_in?: number }>(
+      "GET", "/oauth/access_token", {
+        client_id: appId, client_secret: appSecret, grant_type: "fb_exchange_token", fb_exchange_token: shortToken,
       },
-      { upsert: true, new: true }
     );
+    if (!token) throw new MetaError("Meta did not return a long-lived user access token.");
+    const grant = await checkGrant(token, appId, appSecret);
+    const page = await discoverPage(token, pageId, username);
+    const profile = page.profile;
+    const tokenExpiresAt = grant.expiresAt || (expiresIn && expiresIn > 0 ? new Date(Date.now() + expiresIn * 1000) : undefined);
+    if (!tokenExpiresAt) throw new MetaError("Meta did not report an expiration for the long-lived user token.");
 
-    // 6. Record activity log
-    await ActivityLog.create({
-      action: "INSTAGRAM_ACCOUNT_CONNECTED",
-      performedBy: userEmail || userId,
-      entityType: "InstagramAccount",
-      entityId: account._id.toString(),
-      status: "success",
-      details: {
-        username: account.username,
-        instagramId: account.instagramId,
-        pageId,
-      },
-    });
-
-    return account;
+    return InstagramAccount.findOneAndUpdate(
+      { instagramId: profile.id, userId },
+      { $set: {
+        username: profile.username, name: profile.name || profile.username,
+        profilePictureUrl: profile.profile_picture_url || "",
+        followersCount: profile.followers_count ?? 0, followsCount: profile.follows_count ?? 0,
+        mediaCount: profile.media_count ?? 0, pageId, pageName: page.name, pageTasks: page.tasks,
+        accessTokenEncrypted: encryptSensitive(token), pageTokenEncrypted: encryptSensitive(page.pageToken),
+        authorizationAppId: appId, tokenExpiresAt, isConnected: true,
+        metaUserId: grant.metaUserId, lastAuthorizedAt: new Date(),
+        lastSyncedAt: new Date(), permissions: grant.permissions,
+      } },
+      { new: true, upsert: true, runValidators: true },
+    );
   }
 
-  /**
-   * Publishes an Instagram Reel using Meta Graph API Container Workflow
-   */
-  public static async publishReel(params: InstagramPublishParams): Promise<PublishResult> {
-    const account = await InstagramAccount.findById(params.accountId);
-    if (!account) {
-      return { success: false, statusMessage: "Instagram account record not found in database." };
+  static async checkHealth(account: IInstagramAccount) {
+    const { appId, appSecret, pageId, username } = settings();
+    const token = this.userToken(account);
+    const grant = await checkGrant(token, appId, appSecret);
+    const page = await discoverPage(token, pageId, username);
+    if (page.profile.id !== account.instagramId) throw new MetaError("The linked Instagram account changed. Reconnect.", false, true);
+    await InstagramAccount.updateOne(
+      { _id: account._id, accessTokenEncrypted: account.accessTokenEncrypted, isConnected: true },
+      { $set: {
+        lastSyncedAt: new Date(), permissions: grant.permissions, pageName: page.name, pageTasks: page.tasks,
+        pageTokenEncrypted: encryptSensitive(page.pageToken), followersCount: page.profile.followers_count ?? 0,
+        followsCount: page.profile.follows_count ?? 0, mediaCount: page.profile.media_count ?? 0,
+        ...(grant.expiresAt && { tokenExpiresAt: grant.expiresAt }),
+      } },
+    );
+  }
+
+  static userToken(account: IInstagramAccount) {
+    const { appId, pageId, username } = settings();
+    if (!account.isConnected || !account.accessTokenEncrypted || !account.tokenExpiresAt ||
+        account.tokenExpiresAt.getTime() <= Date.now() || account.authorizationAppId !== appId ||
+        account.pageId !== pageId || account.username.toLowerCase() !== username ||
+        !requiredMetaPermissions().every((permission) => account.permissions.includes(permission))) {
+      throw new MetaError("The Meta connection needs authorization. Reconnect the configured Instagram account and Facebook Page.", false, true);
     }
-
-    if (!account.isConnected || !account.accessTokenEncrypted) {
-      return { success: false, statusMessage: "Instagram account is disconnected. Please re-authenticate." };
-    }
-
-    const accessToken = decryptSensitive(account.accessTokenEncrypted);
-    const igUserId = account.instagramId;
-
     try {
-      // Step 1: Create Video/Reel Container
-      const createContainerRes = await axios.post(
-        `${GRAPH_API_BASE}/${igUserId}/media`,
-        null,
-        {
-          params: {
-            access_token: accessToken,
-            media_type: "REELS",
-            video_url: params.mediaUrl,
-            caption: params.caption,
-            share_to_feed: params.shareToFeed !== false,
-            ...(params.coverImageUrl ? { cover_url: params.coverImageUrl } : {}),
-          },
-        }
-      );
-
-      const containerId = createContainerRes.data.id;
-      if (!containerId) {
-        return {
-          success: false,
-          statusMessage: "Failed to create Instagram media container.",
-        };
-      }
-
-      // Step 2: Poll container status until FINISHED or ERROR (timeout after 120s)
-      let status = "IN_PROGRESS";
-      let attempts = 0;
-      const maxAttempts = 24; // 24 * 5s = 120s
-
-      while (status === "IN_PROGRESS" && attempts < maxAttempts) {
-        await new Promise((resolve) => setTimeout(resolve, 5000));
-        attempts++;
-
-        const statusRes = await axios.get(`${GRAPH_API_BASE}/${containerId}`, {
-          params: {
-            access_token: accessToken,
-            fields: "status_code,status",
-          },
-        });
-
-        status = statusRes.data.status_code || statusRes.data.status;
-      }
-
-      if (status !== "FINISHED") {
-        return {
-          success: false,
-          containerId,
-          statusMessage: `Media processing did not finish within timeout (status: ${status}).`,
-        };
-      }
-
-      // Step 3: Publish Container
-      const publishRes = await axios.post(
-        `${GRAPH_API_BASE}/${igUserId}/media_publish`,
-        null,
-        {
-          params: {
-            access_token: accessToken,
-            creation_id: containerId,
-          },
-        }
-      );
-
-      const publishedMediaId = publishRes.data.id;
-
-      // Get permalink
-      let permalink = "";
-      try {
-        const mediaInfo = await axios.get(`${GRAPH_API_BASE}/${publishedMediaId}`, {
-          params: {
-            access_token: accessToken,
-            fields: "permalink",
-          },
-        });
-        permalink = mediaInfo.data.permalink || "";
-      } catch (e) {
-        // Non-critical if permalink fetch fails
-      }
-
-      return {
-        success: true,
-        instagramPostId: publishedMediaId,
-        containerId,
-        permalink,
-        statusMessage: "Successfully published to Instagram!",
-      };
-    } catch (err: any) {
-      const metaError = err.response?.data?.error?.message || err.message;
-      return {
-        success: false,
-        error: metaError,
-        statusMessage: `Instagram Publishing Error: ${metaError}`,
-      };
+      return decryptSensitive(account.accessTokenEncrypted);
+    } catch {
+      throw new MetaError("The stored Meta grant could not be read. Reconnect the account.", false, true);
     }
   }
 
-  /**
-   * Fetches official account insights (impressions, reach, profile views)
-   */
-  public static async getAccountInsights(accountId: string): Promise<any> {
-    const account = await InstagramAccount.findById(accountId);
-    if (!account) throw new Error("Account not found");
-
-    const accessToken = decryptSensitive(account.accessTokenEncrypted);
-    const igUserId = account.instagramId;
-
+  static async refreshHealth(account: IInstagramAccount) {
     try {
-      const res = await axios.get(`${GRAPH_API_BASE}/${igUserId}/insights`, {
-        params: {
-          access_token: accessToken,
-          metric: "impressions,reach",
-          period: "day",
-        },
-      });
-      return res.data;
-    } catch (err: any) {
-      console.warn("Meta insights request failed:", err.response?.data || err.message);
-      return null;
+      await this.checkHealth(account);
+    } catch (error) {
+      if (error instanceof MetaError && error.authorization) {
+        await this.invalidateGrant(account);
+      }
+      throw error;
+    }
+  }
+
+  static async invalidateGrant(account: IInstagramAccount) {
+    await InstagramAccount.updateOne(
+      { _id: account._id, accessTokenEncrypted: account.accessTokenEncrypted },
+      { $set: { isConnected: false }, $unset: { accessTokenEncrypted: "", pageTokenEncrypted: "" } },
+    );
+  }
+
+  static async monitorTokenHealth() {
+    if (!env.META_APP_ID || !env.META_LOGIN_CONFIG_ID || !env.META_GRAPH_API_VERSION) return;
+    const accounts = await InstagramAccount.find({
+      isConnected: true, authorizationAppId: env.META_APP_ID,
+      lastSyncedAt: { $lt: new Date(Date.now() - 6 * 60 * 60_000) },
+    }).select("+accessTokenEncrypted").limit(10);
+    for (const account of accounts) {
+      try { await this.refreshHealth(account); }
+      catch { console.warn("Meta grant health check could not be completed."); }
     }
   }
 }

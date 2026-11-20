@@ -4,8 +4,7 @@ import { connectDB } from "./config/db";
 import { env } from "./config/env";
 import { SchedulerService } from "./services/schedulerService";
 import { StorageService } from "./services/storageService";
-import { User } from "./models/User";
-import { hashPassword } from "./middleware/auth";
+import { InstagramService } from "./services/instagramService";
 
 async function bootstrap() {
   // 1. Ensure local uploads directory exists
@@ -20,27 +19,6 @@ async function bootstrap() {
 
   // 3. Connect to MongoDB (awaited before database-dependent background workers start)
   await connectDB();
-
-  // Seed / guarantee default admin user exists
-  if (mongoose.connection.readyState === 1) {
-    try {
-      const adminEmail = "avee@learnwithavee.com";
-      const existingUser = await User.findOne({ email: adminEmail });
-      if (!existingUser) {
-        const passwordHash = await hashPassword("password123");
-        await User.create({
-          name: "Avee Lohar",
-          email: adminEmail,
-          passwordHash,
-          role: "admin",
-          isActive: true,
-        });
-        console.log("👤 Initialized default admin account: avee@learnwithavee.com (Password: password123)");
-      }
-    } catch (seedErr: any) {
-      console.warn("User seeding warning:", seedErr.message);
-    }
-  }
 
   // 4. Create Express app
   const app = createApp();
@@ -65,6 +43,8 @@ async function bootstrap() {
   // 6. Background scheduler controller:
   // Strictly DO NOT run background scheduler until MongoDB is connected
   let schedulerInterval: NodeJS.Timeout | null = null;
+  let cycleRunning = false;
+  let nextHealthCheck = 0;
 
   const startScheduler = () => {
     if (schedulerInterval) return;
@@ -76,10 +56,18 @@ async function bootstrap() {
         console.warn("⏸️ MongoDB not connected. Skipping background scheduler cycle.");
         return;
       }
+      if (cycleRunning) return;
+      cycleRunning = true;
       try {
         await SchedulerService.processDuePosts();
-      } catch (schedErr: any) {
-        console.warn("Background scheduler cycle error:", schedErr.message);
+        if (Date.now() >= nextHealthCheck) {
+          nextHealthCheck = Date.now() + 60 * 60_000;
+          await InstagramService.monitorTokenHealth();
+        }
+      } catch {
+        console.warn("The background publishing or grant health check failed.");
+      } finally {
+        cycleRunning = false;
       }
     }, 60 * 1000);
   };

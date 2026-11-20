@@ -1,24 +1,13 @@
-const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
-
 interface FetchOptions extends RequestInit {
   data?: any;
 }
 
 export async function apiRequest<T = any>(endpoint: string, options: FetchOptions = {}): Promise<T> {
-  const url = endpoint.startsWith("http") ? endpoint : `${API_BASE}${endpoint}`;
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
   };
-
-  // Add Bearer token from localStorage for seamless cross-origin auth (Vercel -> Render)
-  if (typeof window !== "undefined") {
-    const token = localStorage.getItem("lwavee_auth_token");
-    if (token && !headers["Authorization"]) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
-  }
 
   if (options.data && !(options.data instanceof FormData)) {
     options.body = JSON.stringify(options.data);
@@ -29,16 +18,17 @@ export async function apiRequest<T = any>(endpoint: string, options: FetchOption
     delete headers["Content-Type"];
   }
 
-  const res = await fetch(url, {
+  const res = await fetch(endpoint, {
     ...options,
     headers,
-    credentials: "include", // Sends HttpOnly cookie automatically
+    credentials: "same-origin",
+    cache: "no-store",
   });
 
   const json = await res.json().catch(() => ({}));
 
   if (!res.ok) {
-    const errorMsg = json?.error?.message || json?.message || `Request failed with status ${res.status}`;
+    const errorMsg = json?.error?.issues?.[0]?.message || json?.error?.message || json?.message || `Request failed with status ${res.status}`;
     throw new Error(errorMsg);
   }
 
@@ -89,7 +79,7 @@ export const api = {
   // Posts & Publishing
   getPosts: (params: string = "") => apiRequest(`/api/posts${params ? `?${params}` : ""}`),
   getPost: (id: string) => apiRequest(`/api/posts/${id}`),
-  createPost: (data: any) => apiRequest("/api/posts", { method: "POST", data }),
+  createPost: (data: unknown, key?: string) => apiRequest("/api/posts", { method: "POST", data, headers: key ? { "Idempotency-Key": key } : undefined }),
   publishPostNow: (id: string) => apiRequest(`/api/posts/${id}/publish-now`, { method: "POST" }),
   deletePost: (id: string) => apiRequest(`/api/posts/${id}`, { method: "DELETE" }),
 
@@ -98,9 +88,9 @@ export const api = {
   reschedulePost: (id: string, data: any) => apiRequest(`/api/calendar/reschedule/${id}`, { method: "PUT", data }),
 
   // Instagram
-  getInstagramAuthUrl: (flow: string = "instagram") => apiRequest(`/api/instagram/auth-url?flow=${flow}`),
+  getInstagramAuthUrl: () => apiRequest("/api/instagram/auth-url", { method: "POST" }),
   getInstagramAccount: () => apiRequest("/api/instagram/account"),
-  connectInstagramToken: (data: any) => apiRequest("/api/instagram/connect-token", { method: "POST", data }),
+  checkMetaHealth: () => apiRequest("/api/instagram/health", { method: "POST" }),
   disconnectInstagram: () => apiRequest("/api/instagram/disconnect", { method: "POST" }),
 
   // Analytics
@@ -120,4 +110,3 @@ export const api = {
   markNotificationsRead: () => apiRequest("/api/settings/notifications/mark-read", { method: "PUT" }),
   getActivityLogs: () => apiRequest("/api/settings/activity-logs"),
 };
-

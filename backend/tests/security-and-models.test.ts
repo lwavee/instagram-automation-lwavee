@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect } from "vitest";
 import { encryptSensitive, decryptSensitive, maskSecret } from "../src/utils/encryption";
 import { generateToken, hashPassword, verifyPassword } from "../src/middleware/auth";
 import { validateMongoUri } from "../src/config/db";
@@ -7,7 +7,7 @@ import { createApp } from "../src/app";
 
 describe("Learn With Avee — Security & Encryption", () => {
   it("should securely encrypt and decrypt sensitive API keys with AES-256-GCM", () => {
-    const rawApiKey = "sk-proj-super-secret-production-ai-key-1234567890";
+    const rawApiKey = "synthetic-api-fixture";
     const encrypted = encryptSensitive(rawApiKey);
 
     expect(encrypted).not.toBe(rawApiKey);
@@ -51,7 +51,7 @@ describe("Learn With Avee — Security & Encryption", () => {
 
 describe("MongoDB URI Validation & Resiliency", () => {
   it("approves valid mongodb+srv connection string", () => {
-    const res = validateMongoUri("mongodb+srv://admin:pass123@cluster0.pjl4e3p.mongodb.net/learn_with_avee?retryWrites=true&w=majority");
+    const res = validateMongoUri("mongodb+srv://test-user:test-pass@mongo.example.com/test?retryWrites=true&w=majority");
     expect(res.valid).toBe(true);
   });
 
@@ -103,7 +103,7 @@ describe("Backend API Endpoints", () => {
   });
 
   it("POST /api/auth/register rejects invalid email or short password", async () => {
-    const res = await request(app).post("/api/auth/register").send({
+    const res = await request(app).post("/api/auth/register").set("Origin", "http://localhost:3000").send({
       name: "Avee",
       email: "invalid-email-string",
       password: "123", // too short (min 8)

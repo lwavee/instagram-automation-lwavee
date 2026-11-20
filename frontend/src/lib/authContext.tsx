@@ -19,8 +19,8 @@ interface User {
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (data: any) => Promise<void>;
-  register: (data: any) => Promise<void>;
+  login: (data: { email: string; password: string }) => Promise<void>;
+  register: (data: { name: string; email: string; password: string }) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -33,87 +33,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshUser = async () => {
     try {
-      if (typeof window !== "undefined") {
-        const cachedUser = localStorage.getItem("lwavee_user");
-        if (cachedUser) {
-          try {
-            setUser(JSON.parse(cachedUser));
-          } catch {}
-        }
-
-        const token = localStorage.getItem("lwavee_auth_token");
-        if (!token) {
-          setUser(null);
-          setLoading(false);
-          return;
-        }
-      }
-
       const data = await api.getMe();
-      if (data?.user) {
-        setUser(data.user);
-        if (typeof window !== "undefined") {
-          localStorage.setItem("lwavee_user", JSON.stringify(data.user));
-        }
-      } else {
-        setUser(null);
-        if (typeof window !== "undefined") {
-          localStorage.removeItem("lwavee_auth_token");
-          localStorage.removeItem("lwavee_user");
-        }
-      }
+      setUser(data?.user ?? null);
     } catch {
       setUser(null);
-      if (typeof window !== "undefined") {
-        localStorage.removeItem("lwavee_auth_token");
-        localStorage.removeItem("lwavee_user");
-      }
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    refreshUser();
+    localStorage.removeItem("lwavee_auth_token");
+    localStorage.removeItem("lwavee_user");
+    void refreshUser();
   }, []);
 
-  const login = async (credentials: any) => {
+  const login: AuthContextType["login"] = async (credentials) => {
     const data = await api.login(credentials);
-    if (data?.token && typeof window !== "undefined") {
-      localStorage.setItem("lwavee_auth_token", data.token);
-    }
-    if (data?.user) {
-      setUser(data.user);
-      if (typeof window !== "undefined") {
-        localStorage.setItem("lwavee_user", JSON.stringify(data.user));
-      }
-    }
+    setUser(data.user);
   };
 
-  const register = async (userData: any) => {
-    const data = await api.register(userData);
-    if (data?.token && typeof window !== "undefined") {
-      localStorage.setItem("lwavee_auth_token", data.token);
-    }
-    if (data?.user) {
-      setUser(data.user);
-      if (typeof window !== "undefined") {
-        localStorage.setItem("lwavee_user", JSON.stringify(data.user));
-      }
-    }
+  const register: AuthContextType["register"] = async (details) => {
+    const data = await api.register(details);
+    setUser(data.user);
   };
 
   const logout = async () => {
-    try {
-      await api.logout();
-    } finally {
-      if (typeof window !== "undefined") {
-        localStorage.removeItem("lwavee_auth_token");
-        localStorage.removeItem("lwavee_user");
-      }
-      setUser(null);
-      window.location.href = "/login";
-    }
+    await api.logout();
+    setUser(null);
+    window.location.href = "/login";
   };
 
   return (
@@ -125,8 +73,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
+  if (!context) throw new Error("useAuth must be used within an AuthProvider");
   return context;
 }
+

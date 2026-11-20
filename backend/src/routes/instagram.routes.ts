@@ -1,232 +1,138 @@
-import { Router, Request, Response, NextFunction } from "express";
-import { z } from "zod";
-import { authenticateToken, AuthenticatedRequest } from "../middleware/auth";
-import { InstagramAccount } from "../models/InstagramAccount";
-import { User } from "../models/User";
-import { InstagramService, verifyOAuthState } from "../services/instagramService";
-import { encryptSensitive } from "../utils/encryption";
-import { ActivityLog } from "../models/ActivityLog";
+import { createHash, randomBytes } from "crypto";
+import { Router, Response, NextFunction } from "express";
+import { authenticateToken, AuthenticatedRequest, requireRole } from "../middleware/auth";
+import { InstagramAccount, IInstagramAccount } from "../models/InstagramAccount";
+import { MetaOAuthState } from "../models/MetaOAuthState";
+import { InstagramService, canPublishPage } from "../services/instagramService";
+import { MetaError, readDeauthorization, requiredMetaPermissions } from "../services/metaGraph";
 import { env } from "../config/env";
 
 const router = Router();
+const admin = requireRole(["admin"]);
+const digest = (value: string) => createHash("sha256").update(value).digest("hex");
 
-// GET /api/instagram/auth-url
-router.get("/auth-url", authenticateToken, (req: AuthenticatedRequest, res: Response) => {
+function redirect(res: Response, key: "connected" | "error", value: string) {
+  const url = new URL("/integrations", env.FRONTEND_URL);
+  url.searchParams.set(key, value);
+  res.redirect(303, url.href);
+}
+
+function summary(account: IInstagramAccount | null) {
+  const permissions = requiredMetaPermissions();
+  if (!account) return { isConnected: false, health: "disconnected", permissions };
+  const connected = Boolean(account.isConnected && env.META_APP_ID && env.META_FACEBOOK_PAGE_ID &&
+    account.authorizationAppId === env.META_APP_ID && account.pageId === env.META_FACEBOOK_PAGE_ID &&
+    account.username.toLowerCase() === env.META_INSTAGRAM_USERNAME?.replace(/^@/, "").toLowerCase() &&
+    account.tokenExpiresAt && account.tokenExpiresAt.getTime() > Date.now() &&
+    permissions.every((permission) => account.permissions.includes(permission)));
+  return {
+    isConnected: connected,
+    health: connected ? "authorized" : account.isConnected ? "reconnect_required" : "disconnected",
+    graphVersion: env.META_GRAPH_API_VERSION,
+    account: {
+      id: account._id, instagramId: account.instagramId, username: account.username, name: account.name,
+      profilePictureUrl: account.profilePictureUrl, followersCount: account.followersCount,
+      followsCount: account.followsCount, mediaCount: account.mediaCount, tokenExpiresAt: account.tokenExpiresAt,
+      lastSyncedAt: account.lastSyncedAt, permissions: account.permissions,
+      page: account.pageId ? { id: account.pageId, name: account.pageName, canPublish: connected && canPublishPage(account.pageTasks) } : undefined,
+    },
+  };
+}
+
+router.use((_req, res, next) => {
+  res.set({ "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" });
+  next();
+});
+
+router.post("/auth-url", authenticateToken, admin, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    const userId = req.user ? req.user._id.toString() : "";
-    const flow = (req.query.flow as "meta_business" | "instagram_standalone") || "meta_business";
-    const url = InstagramService.getOAuthUrl(userId, undefined, flow);
-    res.json({ success: true, data: { url, flow } });
-  } catch (err: any) {
-    res.status(400).json({
-      success: false,
-      error: {
-        message: err.message,
-        tip: "Set INSTAGRAM_APP_ID and INSTAGRAM_APP_SECRET in Settings or backend environment variables.",
-      },
+    const state = randomBytes(32).toString("hex");
+    const url = InstagramService.getOAuthUrl(state);
+    await MetaOAuthState.create({
+      _id: digest(state), sessionHash: digest(req.cookies.auth_token), userId: req.user!._id,
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000),
     });
+    res.json({ success: true, data: { url } });
+  } catch (error) {
+    if (error instanceof MetaError) res.status(503).json({ success: false, error: { message: error.message } });
+    else next(error);
   }
 });
 
-// GET /api/instagram/callback (Browser callback from official Meta OAuth authorization)
-router.get("/callback", async (req: Request, res: Response): Promise<void> => {
-  const { code, state, error, error_description, error_reason } = req.query as Record<string, string>;
-
-  // 1. Check if user cancelled authorization or Meta returned an error
-  if (error || error_description) {
-    const errorMsg = error_description || error_reason || error || "Meta authorization was declined or cancelled.";
-    console.warn(`Meta OAuth error received: ${errorMsg}`);
-    res.redirect(`${env.FRONTEND_URL}/integrations?error=${encodeURIComponent(errorMsg)}`);
-    return;
-  }
-
-  // 2. Validate code and state parameters
-  if (!code || !state) {
-    res.redirect(
-      `${env.FRONTEND_URL}/integrations?error=${encodeURIComponent("Missing authorization code or state parameter.")}`
-    );
-    return;
-  }
-
-  // 3. Cryptographically verify state and retrieve userId
-  let userId = "";
+router.get("/callback", authenticateToken, admin, async (req: AuthenticatedRequest, res: Response) => {
+  const { code, state, error } = req.query;
   try {
-    const statePayload = verifyOAuthState(state);
-    userId = statePayload.userId;
-  } catch (stateErr: any) {
-    console.error(`Invalid OAuth state: ${stateErr.message}`);
-    res.redirect(
-      `${env.FRONTEND_URL}/integrations?error=${encodeURIComponent(
-        "Security verification failed: invalid or expired OAuth state. Please try connecting again."
-      )}`
-    );
-    return;
-  }
+    const attempt = typeof state === "string" && /^[a-f0-9]{64}$/.test(state)
+      ? await MetaOAuthState.findOneAndDelete({
+        _id: digest(state), sessionHash: digest(req.cookies.auth_token), userId: req.user!._id,
+        expiresAt: { $gt: new Date() },
+      })
+      : null;
+    if (!attempt) return redirect(res, "error", "Invalid or expired Meta authorization state. Start again from Integrations.");
+    if (typeof error === "string") return redirect(res, "error", "Meta authorization was cancelled or declined.");
+    if (typeof code !== "string" || !code || code.length > 4096) {
+      return redirect(res, "error", "Meta did not return a valid authorization code.");
+    }
 
-  // 4. Verify authentic user existence
-  const user = await User.findById(userId);
-  if (!user) {
-    res.redirect(
-      `${env.FRONTEND_URL}/integrations?error=${encodeURIComponent("Authenticated user not found. Please log in again.")}`
-    );
-    return;
+    await InstagramService.handleOAuthCallback(code, req.user!._id.toString());
+    redirect(res, "connected", "true");
+  } catch (err) {
+    const message = err instanceof MetaError ? err.message
+      : (err as { code?: number }).code === 11000 ? "That Instagram account is already owned by another dashboard user."
+      : "The Meta connection could not be saved. Start again from Integrations.";
+    redirect(res, "error", message);
   }
+});
 
-  // 5. Exchange code, verify eligibility, encrypt tokens and store account
+router.get("/account", authenticateToken, admin, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    const account = await InstagramService.handleOAuthCallback(code, userId, undefined, user.email);
-    res.redirect(
-      `${env.FRONTEND_URL}/integrations?connected=true&username=${encodeURIComponent(account.username)}`
-    );
-  } catch (oauthErr: any) {
-    console.error("Instagram OAuth exchange failed:", oauthErr.message);
-    const friendlyMsg =
-      oauthErr.response?.data?.error?.message ||
-      oauthErr.message ||
-      "Failed to complete Instagram authorization exchange.";
-    res.redirect(`${env.FRONTEND_URL}/integrations?error=${encodeURIComponent(friendlyMsg)}`);
+    const account = await InstagramAccount.findOne({ userId: req.user!._id }).sort({ isConnected: -1, updatedAt: -1 });
+    res.json({ success: true, data: summary(account) });
+  } catch (error) { next(error); }
+});
+
+router.post("/health", authenticateToken, admin, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const account = await InstagramAccount.findOne({ userId: req.user!._id, isConnected: true }).sort({ updatedAt: -1 }).select("+accessTokenEncrypted");
+    if (!account) {
+      res.status(409).json({ success: false, error: { message: "Connect Meta before checking authorization." } });
+      return;
+    }
+    await InstagramService.refreshHealth(account);
+    res.json({ success: true, data: summary(await InstagramAccount.findById(account._id)) });
+  } catch (error) {
+    if (error instanceof MetaError) res.status(error.retryable ? 503 : 409).json({ success: false, error: { message: error.message } });
+    else next(error);
   }
 });
 
-// GET /api/instagram/account
-router.get(
-  "/account",
-  authenticateToken,
-  async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const account = await InstagramAccount.findOne({
-        $or: [{ userId: req.user!._id, isConnected: true }, { isConnected: true }],
-      }).sort({ updatedAt: -1 });
-
-      if (!account) {
-        res.json({
-          success: true,
-          data: {
-            isConnected: false,
-            message: "No Instagram Professional account connected yet.",
-            setupRequirements: {
-              accountType: "Instagram Professional (Business or Creator)",
-              facebookPageRequired: true,
-              metaAppRequired: true,
-              permissions: [
-                "instagram_basic",
-                "instagram_content_publish",
-                "instagram_manage_insights",
-                "pages_show_list",
-                "pages_read_engagement",
-              ],
-            },
-          },
-        });
-        return;
-      }
-
-      res.json({
-        success: true,
-        data: {
-          isConnected: true,
-          account: {
-            id: account._id,
-            instagramId: account.instagramId,
-            username: account.username,
-            name: account.name,
-            accountType: account.accountType,
-            profilePictureUrl: account.profilePictureUrl,
-            followersCount: account.followersCount,
-            followsCount: account.followsCount,
-            mediaCount: account.mediaCount,
-            tokenExpiresAt: account.tokenExpiresAt,
-            lastSyncedAt: account.lastSyncedAt,
-            permissions: account.permissions,
-          },
-        },
-      });
-    } catch (err) {
-      next(err);
-    }
-  }
-);
-
-// POST /api/instagram/connect-token (Manual connection for local testing / production tokens)
-const manualConnectSchema = z.object({
-  instagramId: z.string().min(3),
-  username: z.string().min(2),
-  accessToken: z.string().min(10),
-  name: z.string().optional(),
-  accountType: z.enum(["BUSINESS", "CREATOR"]).default("BUSINESS"),
-  followersCount: z.number().optional(),
+router.post("/disconnect", authenticateToken, admin, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    await MetaOAuthState.deleteMany({ userId: req.user!._id });
+    await InstagramAccount.updateMany({ userId: req.user!._id }, {
+      $set: { isConnected: false, permissions: [], pageTasks: [] },
+      $unset: { accessTokenEncrypted: "", pageTokenEncrypted: "", tokenExpiresAt: "" },
+    });
+    res.json({ success: true, data: { message: "Disconnected from this dashboard. You can also remove the app under Facebook Business Integrations." } });
+  } catch (error) { next(error); }
 });
 
-router.post(
-  "/connect-token",
-  authenticateToken,
-  async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const { instagramId, username, accessToken, name, accountType, followersCount } = req.body;
-
-      const accessTokenEncrypted = encryptSensitive(accessToken);
-
-      const account = await InstagramAccount.findOneAndUpdate(
-        { instagramId },
-        {
-          $set: {
-            userId: req.user!._id,
-            username,
-            name: name || username,
-            accountType: accountType || "BUSINESS",
-            accessTokenEncrypted,
-            isConnected: true,
-            followersCount: followersCount || 100,
-            lastSyncedAt: new Date(),
-          },
-        },
-        { upsert: true, new: true }
-      );
-
-      await ActivityLog.create({
-        action: "INSTAGRAM_ACCOUNT_CONNECTED",
-        performedBy: req.user!.email,
-        entityType: "InstagramAccount",
-        entityId: account._id.toString(),
-        status: "success",
-      });
-
-      res.json({
-        success: true,
-        data: {
-          message: "Instagram account connected successfully.",
-          account,
-        },
-      });
-    } catch (err) {
-      next(err);
-    }
+router.post("/deauthorize", async (req, res, next) => {
+  const signed = readDeauthorization(req.body?.signed_request, env.META_APP_SECRET);
+  if (!signed || !env.META_APP_ID) {
+    res.sendStatus(400);
+    return;
   }
-);
-
-// POST /api/instagram/disconnect
-router.post(
-  "/disconnect",
-  authenticateToken,
-  async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      await InstagramAccount.updateMany({}, { $set: { isConnected: false } });
-
-      await ActivityLog.create({
-        action: "INSTAGRAM_ACCOUNT_DISCONNECTED",
-        performedBy: req.user!.email,
-        status: "success",
-      });
-
-      res.json({
-        success: true,
-        data: { message: "Instagram account disconnected." },
-      });
-    } catch (err) {
-      next(err);
-    }
-  }
-);
+  try {
+    await InstagramAccount.updateMany({
+      authorizationAppId: env.META_APP_ID, metaUserId: signed.userId, lastAuthorizedAt: { $lte: signed.issuedAt },
+    }, {
+      $set: { isConnected: false, permissions: [], pageTasks: [] },
+      $unset: { accessTokenEncrypted: "", pageTokenEncrypted: "", tokenExpiresAt: "" },
+    });
+    res.sendStatus(200);
+  } catch (error) { next(error); }
+});
 
 export default router;
 

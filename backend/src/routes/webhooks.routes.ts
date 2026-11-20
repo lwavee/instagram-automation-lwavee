@@ -13,7 +13,7 @@ router.post(
   verifyN8nWebhook,
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { action, workflowName, executionId, payload, error } = req.body;
+      const { action, workflowName, executionId, error } = req.body;
 
       if (action === "publish_due_posts") {
         const stats = await SchedulerService.processDuePosts();
@@ -22,7 +22,7 @@ router.post(
       }
 
       if (action === "workflow_error" || error) {
-        const errorMessage = error?.message || "n8n automation workflow reported an execution failure";
+        const errorMessage = "n8n reported an execution failure. Inspect the execution in n8n.";
         await AutomationExecution.create({
           workflowName: workflowName || "n8n Workflow Execution",
           workflowId: executionId,
@@ -30,7 +30,7 @@ router.post(
           status: "failed",
           errorDetails: {
             message: errorMessage,
-            details: JSON.stringify(error || {}),
+            details: "",
           },
           startedAt: new Date(),
           finishedAt: new Date(),
@@ -53,7 +53,6 @@ router.post(
         workflowId: executionId,
         triggerType: "webhook",
         status: "completed",
-        payloadSummary: typeof payload === "string" ? payload : JSON.stringify(payload || {}),
         startedAt: new Date(),
         finishedAt: new Date(),
         logs: [{ timestamp: new Date(), message: `Webhook executed action: ${action}`, level: "info" }],

@@ -1,10 +1,10 @@
 import { Router, Response, NextFunction } from "express";
 import { z } from "zod";
-import { authenticateToken, AuthenticatedRequest } from "../middleware/auth";
+import { authenticateToken, AuthenticatedRequest, requireRole } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { AIProviderConfig } from "../models/AIProviderConfig";
 import { AIService } from "../services/aiService";
-import { encryptSensitive, maskSecret } from "../utils/encryption";
+import { encryptSensitive } from "../utils/encryption";
 import { ActivityLog } from "../models/ActivityLog";
 
 const router = Router();
@@ -71,6 +71,7 @@ router.get(
 router.post(
   "/ai-providers/test",
   authenticateToken,
+  requireRole(["admin"]),
   validate(testAiConnectionSchema),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
@@ -91,6 +92,7 @@ router.post(
 router.post(
   "/ai-providers/save",
   authenticateToken,
+  requireRole(["admin"]),
   validate(saveAiConfigSchema),
   async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {

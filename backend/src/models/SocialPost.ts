@@ -1,21 +1,34 @@
 import mongoose, { Schema, Document } from "mongoose";
 
+export const postStatuses = ["draft", "review_pending", "approved", "scheduled", "publishing", "processing", "published", "failed", "review_required"] as const;
+
 export interface ISocialPost extends Document {
+  userId?: mongoose.Types.ObjectId;
   scriptId?: mongoose.Types.ObjectId;
   mediaAssetId?: mongoose.Types.ObjectId;
   instagramAccountId?: mongoose.Types.ObjectId;
-  mediaType: "REELS" | "IMAGE" | "CAROUSEL" | "VIDEO";
+  destination: "instagram" | "facebook";
+  mediaType: "REELS" | "IMAGE" | "CAROUSEL" | "VIDEO" | "TEXT";
   title: string;
   caption: string;
   hashtags: string[];
   mediaUrl: string;
+  mediaItems: { type: "IMAGE" | "VIDEO"; url: string }[];
   coverImageUrl?: string;
-  status: "draft" | "review_pending" | "approved" | "scheduled" | "publishing" | "published" | "failed";
+  status: typeof postStatuses[number];
   isAutoPublish: boolean;
   scheduledPublishTime?: Date;
   publishedAt?: Date;
   instagramPostId?: string;
   instagramMediaContainerId?: string;
+  instagramChildContainerIds: string[];
+  facebookPostId?: string;
+  publishClaim?: string;
+  leaseUntil?: Date;
+  publishMode?: "manual" | "scheduled";
+  nextAttemptAt?: Date;
+  processingDeadline?: Date;
+  publishSubmittedAt?: Date;
   permalink?: string;
   errorMessage?: string;
   retryCount: number;
@@ -33,8 +46,14 @@ export interface ISocialPost extends Document {
   updatedAt: Date;
 }
 
+const mediaItemSchema = new Schema<ISocialPost["mediaItems"][number]>({
+  type: { type: String, enum: ["IMAGE", "VIDEO"], required: true },
+  url: { type: String, required: true },
+}, { _id: false });
+
 const SocialPostSchema = new Schema<ISocialPost>(
   {
+    userId: { type: Schema.Types.ObjectId, ref: "User", index: true },
     scriptId: {
       type: Schema.Types.ObjectId,
       ref: "GeneratedScript",
@@ -51,9 +70,10 @@ const SocialPostSchema = new Schema<ISocialPost>(
     },
     mediaType: {
       type: String,
-      enum: ["REELS", "IMAGE", "CAROUSEL", "VIDEO"],
+      enum: ["REELS", "IMAGE", "CAROUSEL", "VIDEO", "TEXT"],
       default: "REELS",
     },
+    destination: { type: String, enum: ["instagram", "facebook"], default: "instagram" },
     title: {
       type: String,
       required: true,
@@ -61,7 +81,7 @@ const SocialPostSchema = new Schema<ISocialPost>(
     },
     caption: {
       type: String,
-      required: true,
+      default: "",
     },
     hashtags: {
       type: [String],
@@ -69,7 +89,11 @@ const SocialPostSchema = new Schema<ISocialPost>(
     },
     mediaUrl: {
       type: String,
-      required: true,
+      default: "",
+    },
+    mediaItems: {
+      type: [mediaItemSchema],
+      default: [],
     },
     coverImageUrl: {
       type: String,
@@ -77,7 +101,7 @@ const SocialPostSchema = new Schema<ISocialPost>(
     },
     status: {
       type: String,
-      enum: ["draft", "review_pending", "approved", "scheduled", "publishing", "published", "failed"],
+      enum: postStatuses,
       default: "draft",
       index: true,
     },
@@ -102,6 +126,14 @@ const SocialPostSchema = new Schema<ISocialPost>(
       type: String,
       default: "",
     },
+    instagramChildContainerIds: { type: [String], default: [] },
+    facebookPostId: String,
+    publishClaim: String,
+    leaseUntil: Date,
+    publishMode: { type: String, enum: ["manual", "scheduled"] },
+    nextAttemptAt: Date,
+    processingDeadline: Date,
+    publishSubmittedAt: Date,
     permalink: {
       type: String,
       default: "",
@@ -137,6 +169,7 @@ const SocialPostSchema = new Schema<ISocialPost>(
 );
 
 SocialPostSchema.index({ status: 1, scheduledPublishTime: 1 });
+SocialPostSchema.index({ status: 1, nextAttemptAt: 1 });
 
 export const SocialPost = mongoose.model<ISocialPost>("SocialPost", SocialPostSchema);
 

@@ -1,5 +1,8 @@
 import mongoose from "mongoose";
 import { env } from "./env";
+import { MetaOAuthState } from "../models/MetaOAuthState";
+import { InstagramAccount } from "../models/InstagramAccount";
+import { SocialPost } from "../models/SocialPost";
 
 export function validateMongoUri(uri?: string): { valid: boolean; reason?: string } {
   if (!uri || typeof uri !== "string" || uri.trim() === "") {
@@ -49,22 +52,28 @@ export async function connectDB(): Promise<typeof mongoose | null> {
       connectTimeoutMS: 10000,
       autoIndex: !isProduction,
     });
+    if (env.META_APP_ID) {
+      await Promise.all([
+        MetaOAuthState.createIndexes(),
+        InstagramAccount.collection.createIndex({ instagramId: 1 }, { unique: true }),
+        SocialPost.collection.createIndex({ status: 1, nextAttemptAt: 1 }),
+      ]);
+    }
 
     console.log(`✅ MongoDB Connected successfully: ${conn.connection.host}/${conn.connection.name}`);
     return conn;
   } catch (error: any) {
     console.error("===========================================================");
     console.error(`❌ MONGODB CONNECTION FAILED`);
-    console.error(`   Error: ${error.message}`);
+    console.error("   MongoDB connection or index initialization failed.");
     if (error.code === 8000 || (error.message && error.message.includes("authentication failed"))) {
       console.error(`   👉 Authentication Failed: Check your username and password in MONGODB_URI.`);
     } else if (error.name === "MongoServerSelectionError") {
-      console.error(`   👉 Server Selection Timeout: Render cannot reach your MongoDB cluster.`);
-      console.error(`      Make sure '0.0.0.0/0' is added in MongoDB Atlas -> Network Access -> IP Access List.`);
+      console.error("   Check Atlas reachability and the allowlist for your hosting service's approved egress addresses.");
     } else if (error.message && error.message.includes("querySrv ENOTFOUND")) {
       console.error(`   👉 Hostname Not Found: The cluster address in MONGODB_URI is invalid.`);
     }
-    console.warn(`⚠️ Warning: Server is continuing in decoupled state. Database operations are paused until connection succeeds.`);
+    if (mongoose.connection.readyState !== 0) await mongoose.disconnect().catch(() => undefined);
     console.error("===========================================================");
     return null;
   }
@@ -78,6 +87,6 @@ mongoose.connection.on("disconnected", () => {
   console.warn("⚠️ MongoDB disconnected. Database operations paused.");
 });
 
-mongoose.connection.on("error", (err) => {
-  console.error("❌ MongoDB connection error:", err.message);
+mongoose.connection.on("error", () => {
+  console.error("MongoDB connection error.");
 });

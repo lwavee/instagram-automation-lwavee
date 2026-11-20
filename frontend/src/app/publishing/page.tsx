@@ -21,50 +21,52 @@ import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { formatDate } from "@/lib/utils";
 import Link from "next/link";
+import { PublishingComposer } from "@/components/PublishingComposer";
+import { useAuth } from "@/lib/authContext";
 
 export default function InstagramPublishingPage() {
+  const { user } = useAuth();
   const [accountData, setAccountData] = useState<any>(null);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
   const [selectedLogsPost, setSelectedLogsPost] = useState<any>(null);
   const [logsModalOpen, setLogsModalOpen] = useState(false);
 
-  const loadData = async () => {
+  const loadData = async (quiet = false) => {
     try {
-      setLoading(true);
+      if (!quiet) setLoading(true);
       const [accRes, postsRes] = await Promise.all([
         api.getInstagramAccount(),
-        api.getPosts(),
+        api.getPosts(`page=${historyPage}`),
       ]);
 
       setAccountData(accRes);
       if (postsRes?.posts) {
         setPosts(postsRes.posts);
+        setTotalPages(Math.max(1, postsRes.pagination.totalPages));
       }
     } catch (err: any) {
-      console.warn("Could not load publishing data:", err.message);
+      if (!quiet) setStatusMsg(err.message);
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadData();
-  }, []);
+    void loadData();
+    const refresh = window.setInterval(() => { void loadData(true); }, 15000);
+    return () => window.clearInterval(refresh);
+  }, [historyPage]);
 
   const handlePublishNow = async (postId: string) => {
     try {
       setLoading(true);
-      setStatusMsg("Publishing container to Instagram Graph API...");
       const res = await api.publishPostNow(postId);
-
-      if (res?.result?.success) {
-        setStatusMsg("Successfully published to Instagram!");
-      } else {
-        setStatusMsg(`Status: ${res?.result?.statusMessage || "Published"}`);
-      }
-      loadData();
+      setStatusMsg(res.message);
+      void loadData();
     } catch (err: any) {
       setStatusMsg(`Publishing failed: ${err.message}`);
       loadData();
@@ -83,14 +85,14 @@ export default function InstagramPublishingPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground flex items-center gap-3">
             <Send className="w-8 h-8 text-brand-400" />
-            Instagram Publishing Hub
+            Publishing
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Official Meta Graph API v21.0 container publishing with strict safety guardrails.
+            Compose, schedule, and track Instagram and Facebook Page posts.
           </p>
         </div>
 
-        <Button variant="outline" size="sm" onClick={loadData} className="gap-2">
+        <Button variant="outline" size="sm" onClick={() => loadData()} className="gap-2">
           <RefreshCw className="w-4 h-4" />
           Refresh Queue
         </Button>
@@ -122,7 +124,7 @@ export default function InstagramPublishingPage() {
                     @{account.username}
                   </h3>
                   <Badge variant="success">Connected</Badge>
-                  <Badge variant="outline">{account.accountType}</Badge>
+                  <Badge variant="outline">{"Professional"}</Badge>
                 </div>
                 <div className="flex items-center gap-4 text-xs text-muted-foreground mt-1">
                   <span>Followers: <strong>{account.followersCount}</strong></span>
@@ -149,7 +151,7 @@ export default function InstagramPublishingPage() {
                   Instagram Professional Account Not Connected
                 </h3>
                 <p className="text-xs text-muted-foreground mt-1 max-w-xl">
-                  To publish Reels and retrieve real audience insights, connect your Instagram Business or Creator account in API Integrations. Real publishing requires valid Meta API credentials.
+                  Connect your Facebook Page and linked Instagram professional account in Integrations.
                 </p>
               </div>
             </div>
@@ -162,18 +164,13 @@ export default function InstagramPublishingPage() {
         </Card>
       )}
 
-      {/* Safety Guardrails Protocol Notice */}
-      <div className="rounded-xl border border-border bg-secondary/30 p-4">
-        <h4 className="text-xs font-bold text-foreground flex items-center gap-2 mb-1">
-          <ShieldAlert className="w-4 h-4 text-brand-400" />
-          Meta API Publishing Protocol & Guardrails:
-        </h4>
-        <ul className="text-[11px] text-muted-foreground space-y-1 list-disc list-inside">
-          <li>Never publishes automatically unless explicit Auto-Publish toggle is enabled.</li>
-          <li>Uses Meta 2-step async container creation (`/media`) followed by status polling (`/media_publish`).</li>
-          <li>No unofficial scraping or automated browser logins are ever used.</li>
-        </ul>
-      </div>
+      {user?.role === "admin" && (
+        <PublishingComposer autoPublishEnabled={Boolean(isConnected && user.preferences.autoPublishEnabled)} onSaved={(message) => {
+          setStatusMsg(message);
+          if (historyPage === 1) void loadData();
+          else setHistoryPage(1);
+        }} />
+      )}
 
       {/* Publishing Queue Table */}
       <Card>
@@ -201,6 +198,7 @@ export default function InstagramPublishingPage() {
                 <tr key={post._id} className="hover:bg-secondary/30 transition-colors">
                   <td className="py-3 px-4 max-w-xs truncate font-medium text-foreground">
                     {post.title}
+                    <div className="text-muted-foreground font-normal">{post.destination === "facebook" ? "Facebook Page" : "Instagram"}</div>
                   </td>
                   <td className="py-3 px-4">
                     <Badge variant="outline">{post.mediaType}</Badge>
@@ -220,8 +218,9 @@ export default function InstagramPublishingPage() {
                           : "warning"
                       }
                     >
-                      {post.status}
+                      {post.status.replaceAll("_", " ")}
                     </Badge>
+                    {post.errorMessage && <p className="mt-1 max-w-sm text-muted-foreground">{post.errorMessage}</p>}
                   </td>
                   <td className="py-3 px-4 text-muted-foreground">
                     {post.isAutoPublish ? "Auto-Publish" : "Human Approval Gate"}
@@ -241,7 +240,7 @@ export default function InstagramPublishingPage() {
                       </Button>
                     )}
 
-                    {post.status !== "published" && (
+                    {isConnected && ["draft", "review_pending", "approved", "scheduled", "failed"].includes(post.status) && (
                       <Button
                         size="sm"
                         variant="gradient"
@@ -260,7 +259,7 @@ export default function InstagramPublishingPage() {
                         rel="noopener noreferrer"
                         className="inline-flex items-center text-xs text-brand-400 hover:underline gap-0.5"
                       >
-                        Instagram <ExternalLink className="w-3 h-3" />
+                        View post <ExternalLink className="w-3 h-3" />
                       </a>
                     )}
                   </td>
@@ -270,13 +269,20 @@ export default function InstagramPublishingPage() {
               {posts.length === 0 && (
                 <tr>
                   <td colSpan={6} className="text-center py-8 text-muted-foreground">
-                    No posts currently in queue. Generate a script and schedule it to see it here!
+                    No posts in the publishing queue.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
+        {totalPages > 1 && (
+          <div className="flex items-center justify-end gap-3 p-4 text-sm">
+            <Button variant="outline" disabled={historyPage <= 1 || loading} onClick={() => setHistoryPage(historyPage - 1)}>Previous</Button>
+            <span>Page {historyPage} of {totalPages}</span>
+            <Button variant="outline" disabled={historyPage >= totalPages || loading} onClick={() => setHistoryPage(historyPage + 1)}>Next</Button>
+          </div>
+        )}
       </Card>
 
       {/* Logs Modal */}
@@ -310,4 +316,3 @@ export default function InstagramPublishingPage() {
     </div>
   );
 }
-

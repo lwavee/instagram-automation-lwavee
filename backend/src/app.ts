@@ -28,6 +28,7 @@ import internalRoutes from "./routes/internal.routes";
 
 export function createApp(): Application {
   const app = express();
+  if (env.NODE_ENV === "production") app.set("trust proxy", 1);
 
   // 1. Security HTTP Headers with Helmet
   app.use(
@@ -47,9 +48,8 @@ export function createApp(): Application {
 
   // 2. CORS configuration
   const allowedOrigins = [
-    env.FRONTEND_URL,
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
+    new URL(env.FRONTEND_URL).origin,
+    ...(env.NODE_ENV !== "production" ? ["http://localhost:3000", "http://127.0.0.1:3000"] : []),
   ];
 
   app.use(
@@ -57,13 +57,11 @@ export function createApp(): Application {
       origin: (origin, callback) => {
         if (!origin || allowedOrigins.includes(origin)) {
           callback(null, true);
-        } else {
-          callback(null, true); // Permissive in dev if needed, or check exact origin
-        }
+        } else callback(null, false);
       },
       credentials: true,
       methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-      allowedHeaders: ["Content-Type", "Authorization", "x-n8n-secret", "x-n8n-signature", "x-scheduler-secret"],
+      allowedHeaders: ["Content-Type", "Idempotency-Key", "x-n8n-secret", "x-n8n-signature", "x-scheduler-secret"],
     })
   );
 
@@ -71,6 +69,16 @@ export function createApp(): Application {
   app.use(express.json({ limit: "15mb" }));
   app.use(express.urlencoded({ extended: true, limit: "15mb" }));
   app.use(cookieParser());
+  app.use("/api", (req, res, next) => {
+    const machineEndpoint = ["/internal/scheduler/run", "/webhooks/n8n", "/instagram/deauthorize"].includes(req.path.toLowerCase());
+    const origin = req.get("origin");
+    if (!["GET", "HEAD", "OPTIONS"].includes(req.method) && !machineEndpoint &&
+        (!origin || !allowedOrigins.includes(origin))) {
+      res.status(403).json({ success: false, error: { message: "Untrusted request origin." } });
+      return;
+    }
+    next();
+  });
 
   // 4. Static media uploads directory
   const uploadsDir = path.resolve(process.cwd(), "uploads");
@@ -90,8 +98,9 @@ export function createApp(): Application {
 
   app.get("/api/health", (_req: Request, res: Response) => {
     const isDbConnected = mongoose.connection.readyState === 1;
-    res.status(200).json({
-      status: "ok",
+    const ready = isDbConnected || env.NODE_ENV !== "production";
+    res.status(ready ? 200 : 503).json({
+      status: ready ? "ok" : "unavailable",
       brand: "Learn With Avee",
       service: "Backend API",
       environment: process.env.NODE_ENV || (process.env.RENDER === "true" ? "production" : "development"),

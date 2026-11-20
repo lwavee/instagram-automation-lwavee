@@ -14,6 +14,7 @@ export interface IUser extends Document {
   };
   isActive: boolean;
   lastLoginAt?: Date;
+  sessionVersion: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -31,6 +32,7 @@ const UserSchema = new Schema<IUser>(
     passwordHash: {
       type: String,
       required: true,
+      select: false,
     },
     name: {
       type: String,
@@ -40,7 +42,7 @@ const UserSchema = new Schema<IUser>(
     role: {
       type: String,
       enum: ["admin", "editor", "viewer"],
-      default: "admin",
+      default: "viewer",
     },
     avatar: {
       type: String,
@@ -80,6 +82,7 @@ const UserSchema = new Schema<IUser>(
     lastLoginAt: {
       type: Date,
     },
+    sessionVersion: { type: Number, default: 0, select: false },
   },
   {
     timestamps: true,
@@ -90,6 +93,7 @@ const UserSchema = new Schema<IUser>(
 UserSchema.set("toJSON", {
   transform: (_, ret: any) => {
     delete ret.passwordHash;
+    delete ret.sessionVersion;
     return ret;
   },
 });

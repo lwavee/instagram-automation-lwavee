@@ -18,6 +18,7 @@ import {
   FileCode,
   Activity,
   Bot,
+  Clapperboard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/authContext";
@@ -33,6 +34,7 @@ const navItems = [
   { name: "Publishing Queue", href: "/publishing-queue", icon: ListOrdered },
   { name: "Instagram Accounts", href: "/instagram-accounts", icon: Instagram },
   { name: "YouTube Studio", href: "/youtube", icon: Youtube },
+  { name: "Creator Workflow", href: "/creator-workflow", icon: Clapperboard },
   { name: "Instagram Downloads", href: "/instagram-downloads", icon: Instagram },
   { name: "Analytics", href: "/analytics", icon: BarChart3 },
   { name: "Automation Logs", href: "/automation-logs", icon: Activity },

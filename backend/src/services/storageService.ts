@@ -24,6 +24,7 @@ export interface SaveFileParams {
   campaign?: string;
   topic?: string;
   associatedScriptId?: string;
+  requirePersistent?: boolean;
 }
 
 export class StorageService {
@@ -35,11 +36,19 @@ export class StorageService {
     }
   }
 
+  public static assertPersistentMediaConfiguration() {
+    if (env.NODE_ENV !== "production") return;
+    if (env.MEDIA_STORAGE_PROVIDER !== "cloudinary" || !process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+      throw new Error("Configure persistent Cloudinary storage (provider, cloud name, API key, and API secret) before generating videos in production.");
+    }
+  }
+
   /**
    * Saves uploaded media file to configured storage provider (Cloudinary, Supabase, or Local fallback)
    */
   public static async saveMedia(params: SaveFileParams): Promise<IMediaAsset> {
     const provider = env.MEDIA_STORAGE_PROVIDER;
+    if (params.requirePersistent) this.assertPersistentMediaConfiguration();
 
     // Strict sanitization of original filename to prevent path traversal
     const safeBaseName = path.basename(params.originalName).replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -83,7 +92,8 @@ export class StorageService {
           effectiveProvider = "cloudinary";
         }
       } catch (cloudErr: any) {
-        console.warn("Cloudinary upload failed, falling back to local storage:", cloudErr.message);
+        console.warn("Cloudinary upload failed.");
+        if (params.requirePersistent) throw new Error("Persistent media storage failed. Check Cloudinary configuration and retry video generation.");
       }
     }
 

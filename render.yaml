@@ -45,6 +45,10 @@ services:
         sync: false
       - key: YOUTUBE_OAUTH_REDIRECT_URI
         sync: false
+      - key: YOUTUBE_DATA_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
       - key: N8N_BASE_URL
         sync: false
       - key: N8N_WEBHOOK_SECRET
@@ -53,6 +57,16 @@ services:
         value: gemini
       - key: DEFAULT_AI_MODEL
         value: gemini-3.1-flash-lite
+      - key: GEMINI_VIDEO_MODEL
+        value: gemini-omni-1.2-flash
+      - key: MEDIA_STORAGE_PROVIDER
+        value: cloudinary
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
 
   # ----------------------------------------------------------------------------
   # n8n Automation Engine Web Service (Docker)

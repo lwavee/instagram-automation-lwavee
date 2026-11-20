@@ -5,8 +5,8 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "node ../../backend/node_modules/typescript/bin/tsc",
-    "lint": "node ../../backend/node_modules/typescript/bin/tsc --noEmit"
+    "build": "tsc",
+    "lint": "tsc --noEmit"
   },
   "dependencies": {
     "zod": "^3.24.1"

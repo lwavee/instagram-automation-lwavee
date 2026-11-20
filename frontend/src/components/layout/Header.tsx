@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Bell, Instagram, ShieldCheck, UserCircle, LogOut } from "lucide-react";
+import { Bell, Instagram, ShieldCheck, LogOut } from "lucide-react";
 import { useAuth } from "@/lib/authContext";
 import { api } from "@/lib/api";
 import Link from "next/link";
@@ -9,25 +9,33 @@ import Link from "next/link";
 export function Header() {
   const { user, logout } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
-  const [igConnected, setIgConnected] = useState(false);
+  const [igStatus, setIgStatus] = useState<"checking" | "connected" | "not-connected" | "unavailable">("checking");
   const [igUsername, setIgUsername] = useState("");
 
   useEffect(() => {
+    let active = true;
     async function loadStatus() {
-      try {
-        const notifs = await api.getNotifications();
-        setUnreadCount(notifs?.unreadCount || 0);
+      const [notifications, instagram] = await Promise.allSettled([
+        api.getNotifications(),
+        api.getInstagramAccount(),
+      ]);
+      if (!active) return;
 
-        const account = await api.getInstagramAccount();
-        if (account?.isConnected && account?.account) {
-          setIgConnected(true);
-          setIgUsername(account.account.username);
-        }
-      } catch (e) {
-        // Silently continue if backend is starting
+      if (notifications.status === "fulfilled") {
+        setUnreadCount(notifications.value?.unreadCount || 0);
+      }
+
+      if (instagram.status === "rejected") {
+        setIgStatus("unavailable");
+      } else if (instagram.value?.isConnected && instagram.value?.account) {
+        setIgUsername(instagram.value.account.username);
+        setIgStatus("connected");
+      } else {
+        setIgStatus("not-connected");
       }
     }
-    loadStatus();
+    void loadStatus();
+    return () => { active = false; };
   }, []);
 
   return (
@@ -35,19 +43,21 @@ export function Header() {
       {/* Brand & Focus badge */}
       <div className="flex items-center gap-4">
         <span className="text-xs text-muted-foreground uppercase tracking-widest font-semibold flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          Instagram Engine Active
+          <span className={`w-2 h-2 rounded-full ${igStatus === "connected" ? "bg-emerald-400" : igStatus === "checking" ? "bg-slate-400 animate-pulse" : "bg-amber-400"}`} />
+          {igStatus === "checking" ? "Checking Instagram" :
+            igStatus === "connected" ? "Instagram Connected" :
+              igStatus === "not-connected" ? "Instagram Not Connected" : "Instagram Status Unavailable"}
         </span>
         <span className="text-muted-foreground/40 font-light">|</span>
         <span className="text-xs text-brand-300 font-medium">
-          @lw_avee • Instagram AI Automation
+          {igStatus === "connected" && igUsername ? `@${igUsername} • Instagram AI Automation` : "Learn with Avee • Content Automation"}
         </span>
       </div>
 
       {/* Right Action Bar */}
       <div className="flex items-center gap-4">
         {/* Instagram Account Connection Pill */}
-        {igConnected ? (
+        {igStatus === "connected" ? (
           <Link
             href="/publishing"
             className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-pink-500/10 border border-pink-500/20 text-pink-400 text-xs font-medium hover:bg-pink-500/15 transition-all"

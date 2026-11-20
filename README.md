@@ -18,6 +18,7 @@
   - **MongoDB Atlas** with Mongoose is the primary application database for user accounts, scripts, posts, media assets, and research.
   - **PostgreSQL** is used exclusively for persistent internal storage of n8n Community Edition.
 - **Provider-Independent AI Studio**: Supports **Google Gemini**, **OpenAI**, and **OpenRouter** with server-side **AES-256-GCM authenticated encryption** for API keys.
+- **Automated Short Creator (`/creator-workflow`)**: Uses recent public YouTube video statistics to rank niche signals, generates an original script and scene prompts with Gemini, creates 3–4 vertical AI-avatar video clips, and assembles a downloadable MP4. Video generation requires a paid Gemini API key and persistent production media storage.
 - **Viral Hinglish/Hindi Script Engine**: Generates 2-second thumb-stopping hooks, scene-by-scene visual and voiceover breakdowns, on-screen text highlights, captions, hashtags, and CTAs tailored for Indian tech enthusiasts.
 - **Official Meta Graph API v21.0**: Clean 2-step async container creation (`/media` -> `/media_publish`) for Instagram Reels and photos. No scraping or unofficial login bots.
 
@@ -38,7 +39,7 @@
 ## 🧭 Dashboard Views & Navigation
 
 1. **Overview (`/`)**: Live KPI metrics, 7-day audience reach & impressions growth chart, upcoming scheduled posts, recent automation executions, and safety protocol status.
-2. **Content Research (`/research`)**: Discover verified trending tech news, manage custom keywords, track source URLs, and generate 45s Reel concepts without hallucinations.
+2. **Content Research (`/research`)**: Discover real search/news results and manage source URLs. Empty results remain empty rather than being replaced with fabricated trends.
 3. **AI Script Generator (`/scripts`)**: Interactive scriptwriting studio with 2s hooks, scene-by-scene audio/visual cards, caption/CTA formatter, and status workflow (draft, approve, reject).
 4. **Content Calendar (`/calendar`)**: Interactive monthly and weekly schedule in `Asia/Kolkata` timezone with drag-and-drop reschedule modal and duplicate publishing locks.
 5. **Media Library (`/media`)**: Video/image/audio asset manager with storage provider abstraction (Local, Cloudinary, Supabase), size inspection, and path traversal protection.

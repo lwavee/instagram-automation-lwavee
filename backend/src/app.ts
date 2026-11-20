@@ -26,6 +26,7 @@ import settingsRoutes from "./routes/settings.routes";
 import webhooksRoutes from "./routes/webhooks.routes";
 import internalRoutes from "./routes/internal.routes";
 import youtubeRoutes from "./routes/youtube.routes";
+import creatorWorkflowRoutes from "./routes/creator-workflow.routes";
 
 export function createApp(): Application {
   const app = express();
@@ -125,6 +126,7 @@ export function createApp(): Application {
   app.use("/api/calendar", calendarRoutes);
   app.use("/api/instagram", instagramRoutes);
   app.use("/api/youtube", youtubeRoutes);
+  app.use("/api/creator-workflow", creatorWorkflowRoutes);
   app.use("/api/analytics", analyticsRoutes);
   app.use("/api/automation", automationRoutes);
   app.use("/api/integrations", integrationsRoutes);

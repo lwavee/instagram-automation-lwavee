@@ -102,6 +102,9 @@ export const api = {
     body: formData,
     headers: { "Idempotency-Key": key },
   }),
+  startCreatorWorkflow: (data: any) => apiRequest("/api/creator-workflow/start", { method: "POST", data }),
+  getCreatorWorkflows: () => apiRequest("/api/creator-workflow"),
+  getCreatorWorkflow: (id: string) => apiRequest(`/api/creator-workflow/${id}`),
   disconnectYouTube: () => apiRequest("/api/youtube/disconnect", { method: "POST" }),
 
   // Analytics

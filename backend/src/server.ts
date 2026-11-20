@@ -5,6 +5,7 @@ import { env } from "./config/env";
 import { SchedulerService } from "./services/schedulerService";
 import { StorageService } from "./services/storageService";
 import { InstagramService } from "./services/instagramService";
+import { CreatorWorkflowService } from "./services/creatorWorkflowService";
 
 async function bootstrap() {
   // 1. Ensure local uploads directory exists
@@ -19,6 +20,9 @@ async function bootstrap() {
 
   // 3. Connect to MongoDB (awaited before database-dependent background workers start)
   await connectDB();
+  if (mongoose.connection.readyState === 1) {
+    await CreatorWorkflowService.markInterrupted();
+  }
 
   // 4. Create Express app
   const app = createApp();

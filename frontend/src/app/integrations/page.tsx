@@ -35,7 +35,7 @@ export default function IntegrationsPage() {
   // AI Configuration inputs
   const [selectedProvider, setSelectedProvider] = useState<"gemini" | "openai" | "openrouter">("gemini");
   const [apiKeyInput, setApiKeyInput] = useState("");
-  const [selectedModel, setSelectedModel] = useState("gemini-1.5-flash");
+  const [selectedModel, setSelectedModel] = useState("gemini-3.1-flash-lite");
 
   const loadIntegrations = async () => {
     try {

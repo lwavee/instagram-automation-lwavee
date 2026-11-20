@@ -24,8 +24,9 @@ export class ResearchService {
   ): Promise<SearchArticleItem[]> {
     const results: SearchArticleItem[] = [];
 
-    // 1. If user configured external Search API (Tavily, Serper, or Brave Search), call it
-    const searchApiKey = process.env.SEARCH_API_KEY || process.env.TAVILY_API_KEY;
+    // SEARCH_API_KEY previously sent keys for unrelated providers to Tavily.
+    // Only use a key explicitly configured for Tavily.
+    const searchApiKey = process.env.TAVILY_API_KEY;
 
     if (searchApiKey) {
       try {
@@ -43,6 +44,7 @@ export class ResearchService {
 
         if (res.data?.results) {
           for (const item of res.data.results) {
+            if (typeof item.title !== "string" || typeof item.url !== "string" || !/^https?:\/\//i.test(item.url)) continue;
             results.push({
               title: item.title,
               summary: item.content || "",
@@ -50,8 +52,10 @@ export class ResearchService {
               source: "Tavily Search",
               topic,
               keywords: keywords.length ? keywords : [topic],
-              trendingScore: Math.floor(Math.random() * 20) + 75,
-              publishedAt: item.published_date ? new Date(item.published_date) : new Date(),
+              trendingScore: 0,
+              ...(item.published_date && Number.isFinite(Date.parse(item.published_date))
+                ? { publishedAt: new Date(item.published_date) }
+                : {}),
             });
           }
         }
@@ -79,8 +83,10 @@ export class ResearchService {
                 source: "Hacker News AI Feed",
                 topic,
                 keywords: keywords.length ? keywords : [topic],
-                trendingScore: Math.min(100, Math.max(50, Math.floor((hit.points || 10) / 3))),
-                publishedAt: hit.created_at ? new Date(hit.created_at) : new Date(),
+                trendingScore: Math.min(100, Math.max(0, Number(hit.points) || 0)),
+                ...(hit.created_at && Number.isFinite(Date.parse(hit.created_at))
+                  ? { publishedAt: new Date(hit.created_at) }
+                  : {}),
               });
             }
           }
@@ -88,42 +94,6 @@ export class ResearchService {
       } catch (hnErr: any) {
         console.warn("Hacker News API search fallback error:", hnErr.message);
       }
-    }
-
-    // 3. Fallback curated verified topics for Learn With Avee if network is offline
-    if (results.length === 0) {
-      results.push(
-        {
-          title: `New Breakthrough in Gemini 2.5 & Autonomous Code Agents`,
-          summary: `Google introduces advanced reasoning capabilities and direct agentic workflow integration for developers.`,
-          url: `https://blog.google/technology/ai/gemini-updates-${Date.now()}`,
-          source: "Google AI Blog",
-          topic: "Artificial Intelligence",
-          keywords: ["Gemini", "LLM", "Agents", "Google"],
-          trendingScore: 94,
-          publishedAt: new Date(),
-        },
-        {
-          title: `Prompt Chaining & System Persona Secrets for Developers`,
-          summary: `How top AI engineers structure system prompts to eliminate hallucinations and achieve 99% accuracy.`,
-          url: `https://learnwithavee.com/research/prompt-chaining-${Date.now()}`,
-          source: "Learn With Avee Tech Insights",
-          topic: "Prompt Engineering",
-          keywords: ["Prompting", "ChatGPT", "Claude", "Productivity"],
-          trendingScore: 89,
-          publishedAt: new Date(),
-        },
-        {
-          title: `Top 5 Open-Source AI Automation Frameworks in 2026`,
-          summary: `A complete breakdown of n8n, LangChain, and CrewAI for building multi-agent automated pipelines.`,
-          url: `https://github.com/trending/ai-automation-${Date.now()}`,
-          source: "Open Source Tech Trends",
-          topic: "AI Tools & Automation",
-          keywords: ["n8n", "Automation", "Workflows", "Python"],
-          trendingScore: 92,
-          publishedAt: new Date(),
-        }
-      );
     }
 
     // Save and deduplicate in database
@@ -164,7 +134,7 @@ export class ResearchService {
       {
         topic: article.topic,
         title: `${article.title} — Quick 45s Reel Breakdown`,
-        hook: `Yeh naya AI update aapka ghanton ka kaam minutes me kar dega!`,
+        hook: `Yeh update aapke AI workflow ke liye kyun relevant ho sakta hai? Source ke saath dekhte hain.`,
         summary: article.summary.slice(0, 200),
         targetFormat: "REEL",
         angle: "Fast Tech Update & Practical How-To",
@@ -176,8 +146,8 @@ export class ResearchService {
       },
       {
         topic: article.topic,
-        title: `Stop Doing This! The Smarter Way with ${article.topic}`,
-        hook: `Agar aap abhi bhi purane tarike se kaam kar rahe hain, toh yeh galti mat karo!`,
+        title: `What this ${article.topic} update could change`,
+        hook: `Is update ko use karne se pehle yeh do baatein check karein.`,
         summary: `Common mistakes vs best practices based on: ${article.title}`,
         targetFormat: "REEL",
         angle: "Contrarian & Common Mistakes",

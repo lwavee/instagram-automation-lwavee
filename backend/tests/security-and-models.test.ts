@@ -112,5 +112,19 @@ describe("Backend API Endpoints", () => {
     expect(res.body.success).toBe(false);
     expect(res.body.error.issues.length).toBeGreaterThan(0);
   });
+
+  it("protects creator workflow generation and status from unauthenticated users", async () => {
+    const start = await request(app)
+      .post("/api/creator-workflow/start")
+      .set("Origin", "http://localhost:3000")
+      .send({ idempotencyKey: "f23c2b21-3b7c-4d12-9cf0-492571d08f31", niche: "AI education" });
+    const history = await request(app)
+      .get("/api/creator-workflow")
+      .set("Origin", "http://localhost:3000");
+    expect(start.status).toBe(401);
+    expect(history.status).toBe(401);
+    expect(start.body.success).toBe(false);
+    expect(history.body.success).toBe(false);
+  });
 });
 

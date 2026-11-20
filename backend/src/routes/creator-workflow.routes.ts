@@ -34,6 +34,12 @@ router.get("/", async (req: AuthenticatedRequest, res: Response, next: NextFunct
   } catch (error) { next(error); }
 });
 
+router.get("/readiness", async (_req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    res.json({ success: true, data: await CreatorWorkflowService.checkReadiness() });
+  } catch (error) { next(error); }
+});
+
 router.get("/:id", async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     if (!Types.ObjectId.isValid(req.params.id)) {

@@ -17,6 +17,12 @@ The app uses the YouTube Data API v3 server-side OAuth flow. An API key can read
 6. Set the production `BACKEND_URL` to the Render HTTPS origin and keep `FRONTEND_URL` set to the Vercel origin.
 7. Sign in to the dashboard and open **YouTube Studio**. Connect the Google account that owns the intended channel; confirm the channel name displayed before uploading.
 
+## OAuth publishing status and token lifetime
+
+- For a first private test, add your own Google account as a test user in the consent screen. Google documents that an **External / Testing** app's refresh tokens expire after 7 days when it requests YouTube scopes. That means reconnecting weekly during testing.
+- For ongoing use, set the app to **In production** after configuring the app identity and support details. Google may require OAuth verification for the requested scopes. Complete any verification Google requires before relying on long-lived authorization. Even in production, a user can revoke access or Google can invalidate tokens; reconnect is supported.
+- Do not treat the access token as permanent. The backend refreshes access tokens using the encrypted refresh token and reports when reauthorization is needed.
+
 ## Upload behavior
 
 - Uploads are MP4, limited to 100 MB by this dashboard.

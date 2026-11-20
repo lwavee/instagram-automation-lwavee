@@ -39,6 +39,12 @@ services:
         sync: false
       - key: META_INSTAGRAM_USERNAME
         value: lw_avee
+      - key: YOUTUBE_OAUTH_CLIENT_ID
+        sync: false
+      - key: YOUTUBE_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: YOUTUBE_OAUTH_REDIRECT_URI
+        sync: false
       - key: N8N_BASE_URL
         sync: false
       - key: N8N_WEBHOOK_SECRET

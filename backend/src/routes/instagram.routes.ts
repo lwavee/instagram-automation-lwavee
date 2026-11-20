@@ -59,12 +59,15 @@ router.post("/auth-url", authenticateToken, admin, async (req: AuthenticatedRequ
   }
 });
 
-router.get("/callback", authenticateToken, admin, async (req: AuthenticatedRequest, res: Response) => {
+// OAuth callbacks arrive directly at Render while the dashboard session cookie is
+// scoped to Vercel. The single-use, short-lived state row was created by an
+// authenticated admin request and is the CSRF/session binding for this callback.
+router.get("/callback", async (req: AuthenticatedRequest, res: Response) => {
   const { code, state, error } = req.query;
   try {
     const attempt = typeof state === "string" && /^[a-f0-9]{64}$/.test(state)
       ? await MetaOAuthState.findOneAndDelete({
-        _id: digest(state), sessionHash: digest(req.cookies.auth_token), userId: req.user!._id,
+        _id: digest(state),
         expiresAt: { $gt: new Date() },
       })
       : null;
@@ -74,7 +77,7 @@ router.get("/callback", authenticateToken, admin, async (req: AuthenticatedReque
       return redirect(res, "error", "Meta did not return a valid authorization code.");
     }
 
-    await InstagramService.handleOAuthCallback(code, req.user!._id.toString());
+    await InstagramService.handleOAuthCallback(code, attempt.userId.toString());
     redirect(res, "connected", "true");
   } catch (err) {
     const message = err instanceof MetaError ? err.message

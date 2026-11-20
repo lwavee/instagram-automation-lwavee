@@ -121,8 +121,12 @@ describe("Backend API Endpoints", () => {
     const history = await request(app)
       .get("/api/creator-workflow")
       .set("Origin", "http://localhost:3000");
+    const readiness = await request(app)
+      .get("/api/creator-workflow/readiness")
+      .set("Origin", "http://localhost:3000");
     expect(start.status).toBe(401);
     expect(history.status).toBe(401);
+    expect(readiness.status).toBe(401);
     expect(start.body.success).toBe(false);
     expect(history.body.success).toBe(false);
   });

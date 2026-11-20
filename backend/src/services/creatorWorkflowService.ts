@@ -33,6 +33,21 @@ async function generateVideoClip(ai: GoogleGenAI, prompt: string): Promise<Buffe
 }
 
 export class CreatorWorkflowService {
+  static async checkReadiness() {
+    const missing: string[] = [];
+    if (!env.YOUTUBE_DATA_API_KEY) missing.push("YOUTUBE_DATA_API_KEY — enable YouTube Data API v3 and add its key to the Render backend environment.");
+    if (!(await AIService.getProviderCredentials("gemini"))) missing.push("Gemini API key — configure Gemini in API Integrations or set GEMINI_API_KEY on the backend.");
+    if (env.NODE_ENV === "production") {
+      try {
+        StorageService.assertPersistentMediaConfiguration();
+      } catch {
+        missing.push("Persistent media storage — configure Cloudinary on the Render backend before generating clips.");
+      }
+    }
+    if (!ffmpegPath) missing.push("FFmpeg — rebuild backend dependencies with the platform's FFmpeg binary.");
+    return { ready: missing.length === 0, missing };
+  }
+
   static async markInterrupted() {
     await CreatorWorkflow.updateMany(
       { status: { $in: ["researching", "scripting", "generating", "assembling"] } },

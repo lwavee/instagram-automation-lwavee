@@ -6,6 +6,7 @@ import { AlertTriangle, CheckCircle2, Clapperboard, Download, ExternalLink, Load
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Modal } from "@/components/ui/Modal";
 
 type Workflow = {
   _id: string;
@@ -34,11 +35,14 @@ export default function CreatorWorkflowPage() {
   const [active, setActive] = useState<Workflow | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [readiness, setReadiness] = useState<{ ready: boolean; missing: string[] } | null>(null);
+  const [confirmStart, setConfirmStart] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const data = await api.getCreatorWorkflows();
+      const [data, status] = await Promise.all([api.getCreatorWorkflows(), api.getCreatorWorkflowReadiness()]);
       const items: Workflow[] = data.workflows || [];
+      setReadiness(status as { ready: boolean; missing: string[] });
       setWorkflows(items);
       setActive((current) => {
         if (current) return items.find((item) => item._id === current._id) || current;
@@ -69,10 +73,14 @@ export default function CreatorWorkflowPage() {
     return () => window.clearInterval(timer);
   }, [activeId, activeStatus]);
 
-  const start = async (event: React.FormEvent) => {
+  const requestStart = (event: React.FormEvent) => {
     event.preventDefault();
-    const clipEstimate = 3 * 6;
-    if (!window.confirm(`Start the automated workflow? Gemini video generation is paid. A 3-scene 720p draft is approximately $${(clipEstimate * 0.07).toFixed(2)} at the current published rate, plus text/input charges. Actual billing depends on generated duration and account pricing. The workflow will not publish to Instagram or YouTube.`)) return;
+    setConfirmStart(true);
+  };
+
+  const start = async () => {
+    if (!readiness?.ready) return;
+    setConfirmStart(false);
     setLoading(true);
     setMessage("Starting research and script generation…");
     try {
@@ -111,13 +119,22 @@ export default function CreatorWorkflowPage() {
         <CardTitle className="flex items-center gap-2"><Sparkles className="h-5 w-5" /> Start a workflow</CardTitle>
         <CardDescription>Public view counts and upload dates are used as signals, not promises of virality. Gemini generates 3–4 clips with a consistent fictional avatar and synthesized speech.</CardDescription>
       </CardHeader>
-      <form onSubmit={start} className="space-y-4 px-6 pb-6">
+      <form onSubmit={requestStart} className="space-y-4 px-6 pb-6">
         <label className="block space-y-2 text-sm"><span className="font-medium">Niche</span><input required maxLength={200} value={niche} onChange={(event) => setNiche(event.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2" /></label>
         <label className="block space-y-2 text-sm"><span className="font-medium">Optional topic</span><input maxLength={160} value={topic} onChange={(event) => setTopic(event.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2" placeholder="Leave blank to let Gemini choose from the research" /></label>
-        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-100"><AlertTriangle className="mr-1 inline h-4 w-4" />Video generation is paid and billed by Google. Three 6-second 720p clips are about $1.26 at the current published rate, plus text/input charges. A fourth scene costs more. Backend needs <code>YOUTUBE_DATA_API_KEY</code>, a Gemini key, and persistent media storage for production.</div>
-        <Button type="submit" disabled={loading || (active !== null && busy(active.status))}><Search className="mr-2 h-4 w-4" />{loading ? "Starting…" : "Research and create Short"}</Button>
+        <div role="status" className={`rounded-lg border p-3 text-xs ${readiness?.ready ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100" : "border-amber-500/40 bg-amber-500/10 text-amber-100"}`}>
+          {readiness?.ready ? <CheckCircle2 className="mr-1 inline h-4 w-4" /> : <AlertTriangle className="mr-1 inline h-4 w-4" />}
+          {readiness === null ? "Checking backend requirements…" : readiness.ready ? "Required services are configured. Generated content is saved for you; nothing is published automatically." : <>Workflow unavailable until the backend is configured: <ul className="mt-2 list-disc space-y-1 pl-6">{readiness.missing.map((item) => <li key={item}>{item}</li>)}</ul></>}
+        </div>
+        <div className="rounded-lg border border-border bg-secondary/50 p-3 text-xs text-muted-foreground"><AlertTriangle className="mr-1 inline h-4 w-4 text-amber-300" />Video generation is paid and billed by Google. Three 6-second 720p clips are about $1.26 at the current published rate, plus text/input charges. A fourth scene costs more.</div>
+        <Button type="submit" disabled={loading || !readiness?.ready || (active !== null && busy(active.status))}><Search className="mr-2 h-4 w-4" />{loading ? "Starting…" : "Research and create Short"}</Button>
       </form>
     </Card>
+
+    <Modal isOpen={confirmStart} onClose={() => setConfirmStart(false)} title="Confirm paid video generation" description="Review the estimated Gemini cost before continuing.">
+      <p className="text-sm leading-6 text-muted-foreground">A 3-scene, 18-second 720p draft is approximately <strong className="text-foreground">$1.26</strong> at Google’s currently published video rate, plus text and input charges. Actual billing depends on generated duration and your account pricing. A fourth scene costs more. This workflow only creates and saves a video; it will not publish to Instagram or YouTube.</p>
+      <div className="mt-6 flex justify-end gap-3"><Button type="button" variant="outline" onClick={() => setConfirmStart(false)} disabled={loading}>Cancel</Button><Button type="button" autoFocus onClick={() => void start()} disabled={loading}>{loading ? "Starting…" : "Start generation"}</Button></div>
+    </Modal>
 
     {active && <section className="space-y-4">
       <Card>

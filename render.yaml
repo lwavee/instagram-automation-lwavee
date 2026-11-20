@@ -25,6 +25,20 @@ services:
         sync: false
       - key: BACKEND_URL
         sync: false
+      - key: META_APP_ID
+        sync: false
+      - key: META_APP_SECRET
+        sync: false
+      - key: META_LOGIN_CONFIG_ID
+        sync: false
+      - key: META_GRAPH_API_VERSION
+        sync: false
+      - key: META_REDIRECT_URI
+        sync: false
+      - key: META_FACEBOOK_PAGE_ID
+        sync: false
+      - key: META_INSTAGRAM_USERNAME
+        value: lw_avee
       - key: N8N_BASE_URL
         sync: false
       - key: N8N_WEBHOOK_SECRET

@@ -93,6 +93,17 @@ export const api = {
   checkMetaHealth: () => apiRequest("/api/instagram/health", { method: "POST" }),
   disconnectInstagram: () => apiRequest("/api/instagram/disconnect", { method: "POST" }),
 
+  // YouTube
+  getYouTubeAuthUrl: () => apiRequest("/api/youtube/auth-url", { method: "POST" }),
+  getYouTubeAccount: () => apiRequest("/api/youtube/account"),
+  getYouTubeUploads: () => apiRequest("/api/youtube/uploads"),
+  uploadYouTubeVideo: (formData: FormData, key: string) => apiRequest("/api/youtube/upload", {
+    method: "POST",
+    body: formData,
+    headers: { "Idempotency-Key": key },
+  }),
+  disconnectYouTube: () => apiRequest("/api/youtube/disconnect", { method: "POST" }),
+
   // Analytics
   getAnalytics: (range: string = "30d") => apiRequest(`/api/analytics/overview?range=${range}`),
 

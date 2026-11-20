@@ -155,16 +155,18 @@ describe.skipIf(!testMongo)("Meta HTTP integration with disposable MongoDB and s
     return result.body.data.post as { _id: string; status: string };
   }
 
-  it("binds localhost callback state to one session, expires and consumes it once", async () => {
+  it("accepts the one-use callback state across the Vercel-to-Render redirect, expires and consumes it once", async () => {
     expect((await callback("invalid")).headers.location).toContain("Invalid+or+expired");
     const state = await start();
-    const otherSession = session(admin);
-    expect((await callback(state, { code: "test-code" }, otherSession)).headers.location).toContain("Invalid+or+expired");
-    expect((await callback(state, { error: "access_denied", error_description: "never display this" })).headers.location).toContain("cancelled");
+    useOAuth();
+    const callbackWithoutFrontendCookie = await callback(state, { code: "test-code" }, "").expect(303);
+    expect(new URL(callbackWithoutFrontendCookie.headers.location).searchParams.get("connected")).toBe("true");
+    const cancelledState = await start();
+    expect((await callback(cancelledState, { error: "access_denied", error_description: "never display this" }, "")).headers.location).toContain("cancelled");
     expect((await callback(state)).headers.location).toContain("Invalid+or+expired");
     const expired = await start();
     await MetaOAuthState.updateMany({}, { expiresAt: new Date(0) });
-    expect((await callback(expired)).headers.location).toContain("Invalid+or+expired");
+    expect((await callback(expired, { code: "test-code" }, "")).headers.location).toContain("Invalid+or+expired");
     expect(meta).not.toHaveBeenCalled();
   });
 

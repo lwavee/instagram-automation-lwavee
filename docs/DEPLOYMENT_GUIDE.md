@@ -67,6 +67,13 @@ This document provides deployment instructions for the **Learn With Avee** AI In
    - `APP_ENCRYPTION_KEY`: `<generated-32-byte-hex-string>`
    - `FRONTEND_URL`: `https://<your-vercel-app>.vercel.app`
    - `BACKEND_URL`: `https://<your-backend-app>.onrender.com`
+   - `META_APP_ID`: Meta for Developers app ID
+   - `META_APP_SECRET`: Meta for Developers app secret (store only in Render)
+   - `META_LOGIN_CONFIG_ID`: Login for Business configuration ID for the selected app
+   - `META_GRAPH_API_VERSION`: a currently supported Graph API version enabled for your Meta app
+   - `META_REDIRECT_URI`: `https://<your-backend-app>.onrender.com/api/instagram/callback`
+   - `META_FACEBOOK_PAGE_ID`: ID of the verified LW Avee Facebook Page connected to @lw_avee
+   - `META_INSTAGRAM_USERNAME`: `lw_avee`
    - `N8N_BASE_URL`: `https://<your-n8n-app>.onrender.com`
    - `N8N_WEBHOOK_SECRET`: `<your-secure-webhook-secret>`
    - `MEDIA_STORAGE_PROVIDER`: `cloudinary` (or `supabase`)
@@ -74,6 +81,8 @@ This document provides deployment instructions for the **Learn With Avee** AI In
 
 > [!NOTE]
 > **Render Free Tier Cold Starts**: Render's free tier spins down web services after 15 minutes of inactivity. Incoming requests can take 30–50 seconds to boot on cold start. The application frontend includes clear loading states to handle this smoothly.
+
+> **Meta OAuth callback**: In Meta for Developers, add the exact `META_REDIRECT_URI` value to the app's Valid OAuth Redirect URIs. Do not use the Vercel frontend URL for this callback; the OAuth callback route runs on the Render backend. Configure the Meta app ID, app secret, Login for Business configuration, Page ID, and account username in Render's backend service environment. Never put `META_APP_SECRET` in Vercel or a `NEXT_PUBLIC_*` variable.
 
 ---
 

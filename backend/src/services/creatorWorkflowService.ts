@@ -12,6 +12,7 @@ import { GeneratedScript } from "../models/GeneratedScript";
 import { AIService, AIServiceError } from "./aiService";
 import { StorageService } from "./storageService";
 import { ObservedYouTubeVideo, YouTubeResearchService } from "./youtubeResearchService";
+import { renderSceneCard } from "../utils/ppmRenderer";
 
 const execFileAsync = promisify(execFile);
 const AVATAR_STYLE = "An original, friendly stylized 3D Indian tech educator avatar, warm expression, consistent face, short dark hair, teal hoodie, clean modern studio. Keep the same identity, outfit and visual style across every clip. Do not imitate a real creator or a copyrighted character.";
@@ -25,36 +26,37 @@ async function renderNativeSceneClip(
   ffmpegBinary: string,
   workDir: string,
   sceneNumber: number,
+  totalScenes: number,
   scene: { visualDescription: string; voiceoverHinglish?: string; voiceoverHindi: string; onScreenText: string; durationSeconds?: number },
   reelTitle: string
 ): Promise<Buffer> {
   const duration = scene.durationSeconds || 6;
+  const ppmPath = path.join(workDir, `scene-frame-${sceneNumber}.ppm`);
   const clipPath = path.join(workDir, `native-scene-${sceneNumber}.mp4`);
-  const safeTitle = (reelTitle || "LEARN WITH AVEE").replace(/['"\\]/g, "").slice(0, 45);
-  const safeText = (scene.onScreenText || scene.voiceoverHinglish || scene.visualDescription || "").replace(/['"\\]/g, "").slice(0, 85);
-  const safeVoice = (scene.voiceoverHinglish || scene.voiceoverHindi || "").replace(/['"\\]/g, "").slice(0, 100);
 
-  const drawtextFilters = [
-    "drawtext=text='LEARN WITH AVEE':fontcolor=0xFFB83D:fontsize=32:x=(w-text_w)/2:y=120",
-    `drawtext=text='SCENE ${sceneNumber}':fontcolor=0xF52C97:fontsize=26:x=(w-text_w)/2:y=180`,
-    `drawtext=text='${safeTitle}':fontcolor=white:fontsize=34:x=(w-text_w)/2:y=340`,
-    `drawtext=text='${safeText}':fontcolor=0xE0E0E0:fontsize=28:x=(w-text_w)/2:y=520`,
-    safeVoice ? `drawtext=text='${safeVoice}':fontcolor=0xFFD54F:fontsize=24:x=(w-text_w)/2:y=820` : "",
-    "drawtext=text='@learnwithavee':fontcolor=0x888888:fontsize=22:x=(w-text_w)/2:y=1160",
-  ].filter(Boolean).join(",");
+  const cardBuffer = renderSceneCard({
+    sceneNumber,
+    totalScenes,
+    reelTitle,
+    onScreenText: scene.onScreenText || scene.visualDescription,
+    voiceoverText: scene.voiceoverHinglish || scene.voiceoverHindi,
+    handle: "@learnwithavee",
+  });
 
-  const audioTone = 180 + sceneNumber * 30;
+  await fs.writeFile(ppmPath, cardBuffer);
+  const audioTone = 180 + sceneNumber * 35;
 
   await execFileAsync(ffmpegBinary, [
     "-hide_banner", "-loglevel", "error", "-y",
-    "-f", "lavfi", "-i", `color=c=0x130D1A:s=720x1280:d=${duration}`,
+    "-loop", "1", "-i", ppmPath,
     "-f", "lavfi", "-i", `aevalsrc=sin(${audioTone}*2*PI*t)*exp(-t*0.25)*0.06:s=44100:d=${duration}`,
-    "-vf", drawtextFilters,
+    "-t", String(duration),
     "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
     "-c:a", "aac", "-b:a", "128k",
     clipPath,
   ], { timeout: 60_000 });
 
+  await fs.unlink(ppmPath).catch(() => undefined);
   return fs.readFile(clipPath);
 }
 
@@ -212,7 +214,7 @@ export class CreatorWorkflowService {
         }
 
         if (!clip) {
-          clip = await renderNativeSceneClip(ffmpegPath, workDir, index + 1, scene, generated.reelTitle);
+          clip = await renderNativeSceneClip(ffmpegPath, workDir, index + 1, scenes.length, scene, generated.reelTitle);
         }
 
         if (clip.length < 10_000 || clip.subarray(4, 8).toString("ascii") !== "ftyp") {

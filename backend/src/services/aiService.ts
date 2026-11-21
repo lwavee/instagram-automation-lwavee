@@ -77,35 +77,75 @@ export class AIService {
     return null;
   }
 
+  /**
+   * Resolves the best available AI provider and credentials, falling back cleanly
+   */
+  public static async resolveProviderAndCredentials(
+    preferredProvider?: "gemini" | "openai" | "openrouter"
+  ): Promise<{ provider: "gemini" | "openai" | "openrouter"; apiKey: string; defaultModel: string } | null> {
+    if (preferredProvider) {
+      const creds = await this.getProviderCredentials(preferredProvider);
+      if (creds) return { provider: preferredProvider, ...creds };
+    }
+
+    const defaultCreds = await this.getProviderCredentials(env.DEFAULT_AI_PROVIDER);
+    if (defaultCreds) return { provider: env.DEFAULT_AI_PROVIDER, ...defaultCreds };
+
+    for (const p of ["gemini", "openrouter", "openai"] as const) {
+      const creds = await this.getProviderCredentials(p);
+      if (creds) return { provider: p, ...creds };
+    }
+
+    return null;
+  }
+
   public static async suggestCreatorTopic(
     niche: string,
     evidence: Array<{ title: string; channelTitle: string; views: number; viewsPerHour: number; url: string }>
   ): Promise<{ topic: string; rationale: string }> {
-    const creds = await this.getProviderCredentials("gemini");
-    if (!creds) throw new AIServiceError("Configure an enabled Gemini API key in API Integrations before starting the creator workflow.", 503);
-    const ai = new GoogleGenAI({ apiKey: creds.apiKey, httpOptions: { apiVersion: "v1beta" } });
-    const model = this.normalizeGeminiModel(creds.defaultModel || env.DEFAULT_AI_MODEL);
+    const creds = await this.resolveProviderAndCredentials("gemini");
+    if (!creds) throw new AIServiceError("Configure an enabled AI API key (Gemini, OpenRouter, or OpenAI) in API Integrations before starting the creator workflow.", 503);
+
     const prompt = `You are the content strategist for Learn With Avee, a practical Indian tech education channel. Analyze these REAL public YouTube observations and select one original, useful Short topic with above-baseline potential. This is not a guarantee of virality. Do not copy a creator's title, script, framing, or wording. Do not invent facts, features, dates, or statistics. Return only JSON {"topic":"...","rationale":"..."}.\nNiche: ${niche}\nObserved videos (views per hour are computed from public view count and age):\n${JSON.stringify(evidence)}`;
+
     try {
-      const result = await ai.models.generateContent({ model, contents: prompt, config: { responseMimeType: "application/json" } });
-      const parsed = JSON.parse(result.text || "{}");
+      let rawText = "";
+      if (creds.provider === "gemini") {
+        const ai = new GoogleGenAI({ apiKey: creds.apiKey, httpOptions: { apiVersion: "v1beta" } });
+        const model = this.normalizeGeminiModel(creds.defaultModel || env.DEFAULT_AI_MODEL);
+        const result = await ai.models.generateContent({ model, contents: prompt, config: { responseMimeType: "application/json" } });
+        rawText = result.text || "";
+      } else {
+        const client = new OpenAI({
+          apiKey: creds.apiKey,
+          baseURL: creds.provider === "openrouter" ? "https://openrouter.ai/api/v1" : undefined,
+        });
+        const response = await client.chat.completions.create({
+          model: creds.defaultModel,
+          messages: [{ role: "user", content: prompt }],
+          response_format: { type: "json_object" },
+        });
+        rawText = response.choices[0]?.message?.content || "";
+      }
+
+      const parsed = JSON.parse(rawText || "{}");
       if (typeof parsed.topic !== "string" || parsed.topic.trim().length < 4 || typeof parsed.rationale !== "string") {
         throw new Error("incomplete topic response");
       }
       return { topic: parsed.topic.trim().slice(0, 160), rationale: parsed.rationale.trim().slice(0, 500) };
     } catch {
-      throw new AIServiceError("Gemini could not select a topic from the observed YouTube research. Check the Gemini model access and retry.");
+      throw new AIServiceError("AI provider could not select a topic from the observed YouTube research. Check the model access and retry.");
     }
   }
 
   private static normalizeGeminiModel(model?: string): string {
     const candidate = model?.trim();
     if (candidate && /^(gemini-1\.[0-9]+|gemini-2\.[0-9]+)-(flash|pro)(-|$)/i.test(candidate)) {
-      return env.DEFAULT_AI_MODEL;
+      return candidate;
     }
-    return candidate && /^[a-zA-Z0-9.-]+$/.test(candidate)
+    return candidate && /^[a-zA-Z0-9.-]+$/.test(candidate) && !candidate.includes("3.1")
       ? candidate
-      : env.DEFAULT_AI_MODEL;
+      : "gemini-1.5-flash";
   }
 
   /**
@@ -173,12 +213,12 @@ export class AIService {
    * Generates a high-retention Hindi/Hinglish Instagram Reel script for Learn With Avee
    */
   public static async generateReelScript(params: ScriptGenerationParams): Promise<GeneratedScriptResult> {
-    const preferredProvider = params.provider || env.DEFAULT_AI_PROVIDER;
-    const creds = await this.getProviderCredentials(preferredProvider);
-    if (!creds) throw new AIServiceError(`Configure an enabled ${preferredProvider} API key in API Integrations before generating content.`, 503);
+    const creds = await this.resolveProviderAndCredentials(params.provider);
+    if (!creds) throw new AIServiceError("Configure an enabled AI API key (Gemini, OpenRouter, or OpenAI) in API Integrations before generating content.", 503);
 
+    const activeProvider = creds.provider;
     const requestedModel = params.model || creds.defaultModel || env.DEFAULT_AI_MODEL;
-    const modelToUse = preferredProvider === "gemini" ? this.normalizeGeminiModel(requestedModel) : requestedModel;
+    const modelToUse = activeProvider === "gemini" ? this.normalizeGeminiModel(requestedModel) : requestedModel;
 
     const systemPrompt = `You are the lead content creator and AI viral scriptwriter for "Learn With Avee" (@learnwithavee).
 Learn With Avee specializes in: AI tools, ChatGPT/Gemini prompt engineering, Cyber Security, Tech updates, and Web Development.
@@ -224,7 +264,7 @@ Return a JSON object conforming strictly to this structure:
 
     let rawJsonResponse = "";
 
-    if (preferredProvider === "gemini") {
+    if (activeProvider === "gemini") {
       try {
         const genAI = new GoogleGenAI({ apiKey: creds.apiKey, httpOptions: { apiVersion: "v1beta" } });
         const response = await genAI.models.generateContent({
@@ -234,14 +274,37 @@ Return a JSON object conforming strictly to this structure:
         });
         rawJsonResponse = response.text || "";
       } catch (geminiErr: any) {
-        console.warn("Gemini script generation failed; no fallback content was generated.");
-        throw new AIServiceError("Gemini generation failed. Check that the API key has access to the selected model, then retry.");
+        console.warn("Gemini script generation failed; checking fallback AI provider.");
+        // Try fallback to OpenRouter / OpenAI if available
+        const fallbackCreds = await this.getProviderCredentials("openrouter") || await this.getProviderCredentials("openai");
+        if (fallbackCreds) {
+          try {
+            const isOR = Boolean(process.env.OPENROUTER_API_KEY);
+            const client = new OpenAI({
+              apiKey: fallbackCreds.apiKey,
+              baseURL: isOR ? "https://openrouter.ai/api/v1" : undefined,
+            });
+            const response = await client.chat.completions.create({
+              model: fallbackCreds.defaultModel,
+              messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: userPrompt },
+              ],
+              response_format: { type: "json_object" },
+            });
+            rawJsonResponse = response.choices[0]?.message?.content || "";
+          } catch {
+            throw new AIServiceError("AI script generation failed. Check that the API key has access to the selected model, then retry.");
+          }
+        } else {
+          throw new AIServiceError("Gemini generation failed. Check that the API key has access to the selected model, then retry.");
+        }
       }
-    } else if (preferredProvider === "openai" || preferredProvider === "openrouter") {
+    } else if (activeProvider === "openai" || activeProvider === "openrouter") {
       try {
         const client = new OpenAI({
           apiKey: creds.apiKey,
-          baseURL: preferredProvider === "openrouter" ? "https://openrouter.ai/api/v1" : undefined,
+          baseURL: activeProvider === "openrouter" ? "https://openrouter.ai/api/v1" : undefined,
         });
         const response = await client.chat.completions.create({
           model: modelToUse,
@@ -253,11 +316,11 @@ Return a JSON object conforming strictly to this structure:
         });
         rawJsonResponse = response.choices[0]?.message?.content || "";
       } catch (aiErr: any) {
-        console.warn(`${preferredProvider} script generation failed.`);
-        throw new AIServiceError(`${preferredProvider} generation failed. Check its API key and model configuration, then retry.`);
+        console.warn(`${activeProvider} script generation failed.`);
+        throw new AIServiceError(`${activeProvider} generation failed. Check its API key and model configuration, then retry.`);
       }
     } else {
-      throw new AIServiceError(`No enabled ${preferredProvider} provider is available. Configure its API key first.`, 503);
+      throw new AIServiceError(`No enabled ${activeProvider} provider is available. Configure its API key first.`, 503);
     }
 
     try {
@@ -277,7 +340,7 @@ Return a JSON object conforming strictly to this structure:
 
       return {
         ...parsed,
-        providerUsed: preferredProvider,
+        providerUsed: activeProvider,
         modelUsed: modelToUse,
       };
     } catch (parseError) {

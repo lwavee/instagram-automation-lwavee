@@ -9,6 +9,13 @@ export async function apiRequest<T = any>(endpoint: string, options: FetchOption
     ...(options.headers as Record<string, string>),
   };
 
+  if (typeof window !== "undefined") {
+    const token = localStorage.getItem("lwavee_auth_token");
+    if (token && !headers["Authorization"]) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+  }
+
   if (options.data && !(options.data instanceof FormData)) {
     options.body = JSON.stringify(options.data);
   }
@@ -21,7 +28,7 @@ export async function apiRequest<T = any>(endpoint: string, options: FetchOption
   const res = await fetch(endpoint, {
     ...options,
     headers,
-    credentials: "same-origin",
+    credentials: "include",
     cache: "no-store",
   });
 

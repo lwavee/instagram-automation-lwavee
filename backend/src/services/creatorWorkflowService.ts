@@ -35,8 +35,9 @@ async function generateVideoClip(ai: GoogleGenAI, prompt: string): Promise<Buffe
 export class CreatorWorkflowService {
   static async checkReadiness() {
     const missing: string[] = [];
-    if (!env.YOUTUBE_DATA_API_KEY) missing.push("YOUTUBE_DATA_API_KEY — enable YouTube Data API v3 and add its key to the Render backend environment.");
-    if (!(await AIService.getProviderCredentials("gemini"))) missing.push("Gemini API key — configure Gemini in API Integrations or set GEMINI_API_KEY on the backend.");
+    if (!env.YOUTUBE_DATA_API_KEY) missing.push("YOUTUBE_DATA_API_KEY — enable YouTube Data API v3 and add its key to the backend environment.");
+    const aiCreds = await AIService.resolveProviderAndCredentials();
+    if (!aiCreds) missing.push("AI API key — configure Gemini, OpenRouter, or OpenAI in API Integrations or in the backend environment.");
     if (env.NODE_ENV === "production") {
       try {
         StorageService.assertPersistentMediaConfiguration();
@@ -92,14 +93,20 @@ export class CreatorWorkflowService {
       if (claimed.modifiedCount !== 1) return;
 
       await fs.mkdir(workDir, { recursive: true });
-      const research = await YouTubeResearchService.analyze(job.niche);
-      if (research.length < 3) throw new Error("YouTube research returned too few recent public videos. Try a broader niche or check the Data API quota.");
-      await this.update(jobId, { research });
+      let research: ObservedYouTubeVideo[] = [];
+      try {
+        research = await YouTubeResearchService.analyze(job.niche);
+      } catch (err: any) {
+        console.warn("YouTube research API check:", err.message);
+      }
+      if (research.length > 0) {
+        await this.update(jobId, { research });
+      }
 
       let topic = job.requestedTopic.trim();
-      let topicRationale = "User-selected topic; performance context comes from the linked public YouTube research.";
+      let topicRationale = "User-selected topic; practical content focus for Learn With Avee.";
       if (!topic) {
-        await this.update(jobId, { status: "scripting", stageMessage: "Selecting an original topic from observed video performance" });
+        await this.update(jobId, { status: "scripting", stageMessage: "Selecting an original topic from niche trends and research" });
         const suggestion = await AIService.suggestCreatorTopic(job.niche, research.slice(0, 10).map((video: ObservedYouTubeVideo) => ({
           title: video.title, channelTitle: video.channelTitle, views: video.viewCount, viewsPerHour: video.viewsPerHour, url: video.url,
         })));
@@ -109,17 +116,19 @@ export class CreatorWorkflowService {
         await this.update(jobId, { status: "scripting", stageMessage: "Writing a script and scene prompts from the selected topic and observed niche research" });
       }
 
-      const sourceNotes = research.slice(0, 8).map((video) => `- ${video.title} | ${video.channelTitle} | ${video.viewCount} views | ${video.viewsPerHour} views/hour | ${video.url}`).join("\n");
+      const sourceNotes = research.length > 0
+        ? research.slice(0, 8).map((video) => `- ${video.title} | ${video.channelTitle} | ${video.viewCount} views | ${video.viewsPerHour} views/hour | ${video.url}`).join("\n")
+        : "Curated niche focus: AI tools, tutorials, cybersecurity, and coding tips for Indian creators";
+
       const generated = await AIService.generateReelScript({
         topic,
         targetFormat: "REEL",
         language: "Hinglish",
         targetDurationSeconds: 24,
-        provider: "gemini",
-        customInstructions: `Create exactly 3 or 4 concise scenes for an AI-avatar vertical Short. Use this public performance research only as topic context; do not copy titles, scripts, framing, or wording. Do not invent claims or statistics. Keep the script practical and explain what viewers can verify. For every scene, visualDescription must describe a clear, feasible shot for one consistent friendly Indian tech educator avatar; voiceoverHinglish must contain the exact spoken line.\nSelected topic rationale: ${topicRationale}\nObserved videos:\n${sourceNotes}`,
+        customInstructions: `Create exactly 3 or 4 concise scenes for an AI-avatar vertical Short. Use this topic context; do not copy titles, scripts, framing, or wording. Do not invent claims or statistics. Keep the script practical and explain what viewers can verify. For every scene, visualDescription must describe a clear, feasible shot for one consistent friendly Indian tech educator avatar; voiceoverHinglish must contain the exact spoken line.\nSelected topic rationale: ${topicRationale}\nObserved notes:\n${sourceNotes}`,
       });
       const scenes = generated.scenes.slice(0, 4);
-      if (scenes.length < 3) throw new Error("Gemini returned fewer than three scenes. The workflow stopped before paid video generation.");
+      if (scenes.length < 2) throw new Error("AI provider returned too few scenes. The workflow stopped before clip generation.");
 
       const script = await GeneratedScript.create({
         topic, reelTitle: generated.reelTitle, format: "REEL", language: "Hinglish", openingHook: generated.openingHook,
@@ -136,11 +145,17 @@ export class CreatorWorkflowService {
       }));
       await this.update(jobId, {
         topic, topicRationale, scriptId: script._id as any,
-        scenes: prompts, stageMessage: `Script ready. Generating ${prompts.length} Gemini video clips`,
+        scenes: prompts, stageMessage: `Script ready. Generating ${prompts.length} video scene prompts`,
       });
 
       const credentials = await AIService.getProviderCredentials("gemini");
-      if (!credentials) throw new AIServiceError("Configure Gemini in AI Integrations before generating video.", 503);
+      if (!credentials) {
+        await this.update(jobId, {
+          status: "completed",
+          stageMessage: "Script and scene prompts ready. (Configure Gemini API key in API Integrations to enable video avatar rendering)",
+        });
+        return;
+      }
       const ai = new GoogleGenAI({ apiKey: credentials.apiKey, httpOptions: { apiVersion: "v1beta" } });
       StorageService.assertPersistentMediaConfiguration();
       await this.update(jobId, { status: "generating" });

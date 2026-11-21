@@ -36,6 +36,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = await api.getMe();
       setUser(data?.user ?? null);
     } catch {
+      localStorage.removeItem("lwavee_auth_token");
       setUser(null);
     } finally {
       setLoading(false);
@@ -43,25 +44,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    localStorage.removeItem("lwavee_auth_token");
-    localStorage.removeItem("lwavee_user");
     void refreshUser();
   }, []);
 
   const login: AuthContextType["login"] = async (credentials) => {
     const data = await api.login(credentials);
+    if (data?.token) {
+      localStorage.setItem("lwavee_auth_token", data.token);
+    }
     setUser(data.user);
   };
 
   const register: AuthContextType["register"] = async (details) => {
     const data = await api.register(details);
+    if (data?.token) {
+      localStorage.setItem("lwavee_auth_token", data.token);
+    }
     setUser(data.user);
   };
 
   const logout = async () => {
-    await api.logout();
-    setUser(null);
-    window.location.href = "/login";
+    try {
+      await api.logout();
+    } finally {
+      localStorage.removeItem("lwavee_auth_token");
+      setUser(null);
+      window.location.href = "/login";
+    }
   };
 
   return (

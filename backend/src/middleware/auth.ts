@@ -46,7 +46,11 @@ export async function authenticateToken(
   next: NextFunction
 ): Promise<void> {
   try {
-    const token = req.cookies?.auth_token;
+    let token = req.cookies?.auth_token;
+
+    if (!token && typeof req.headers.authorization === "string" && req.headers.authorization.startsWith("Bearer ")) {
+      token = req.headers.authorization.slice(7).trim();
+    }
 
     if (!token) {
       res.status(401).json({

@@ -75,6 +75,7 @@ router.post(
         success: true,
         data: {
           user,
+          token,
         },
       });
     } catch (err) {
@@ -138,6 +139,7 @@ router.post(
         success: true,
         data: {
           user,
+          token,
         },
       });
     } catch (err) {

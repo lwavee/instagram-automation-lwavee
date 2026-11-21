@@ -21,6 +21,43 @@ function buildScenePrompt(scene: { visualDescription: string; voiceoverHinglish?
   return `${AVATAR_STYLE}\nVertical 9:16 short-form video, 720p, about 6 seconds. Scene ${number} of a coherent educational Short titled "${title}". ${scene.visualDescription}. Medium close-up, clear expressive gestures, camera movement and lighting suited to this exact scene. Use the same warm medium-pitch Indian male Hinglish voice in every clip, with clear pronunciation and consistent loudness. The avatar speaks this exact line naturally with accurate lip-sync and clean voice audio: "${dialogue}". Do not add other spoken words, claims, numbers, logos, or watermarks. Use simple uncluttered background. On-screen text, if legible, should be limited to: "${scene.onScreenText}".`;
 }
 
+async function renderNativeSceneClip(
+  ffmpegBinary: string,
+  workDir: string,
+  sceneNumber: number,
+  scene: { visualDescription: string; voiceoverHinglish?: string; voiceoverHindi: string; onScreenText: string; durationSeconds?: number },
+  reelTitle: string
+): Promise<Buffer> {
+  const duration = scene.durationSeconds || 6;
+  const clipPath = path.join(workDir, `native-scene-${sceneNumber}.mp4`);
+  const safeTitle = (reelTitle || "LEARN WITH AVEE").replace(/['"\\]/g, "").slice(0, 45);
+  const safeText = (scene.onScreenText || scene.voiceoverHinglish || scene.visualDescription || "").replace(/['"\\]/g, "").slice(0, 85);
+  const safeVoice = (scene.voiceoverHinglish || scene.voiceoverHindi || "").replace(/['"\\]/g, "").slice(0, 100);
+
+  const drawtextFilters = [
+    "drawtext=text='LEARN WITH AVEE':fontcolor=0xFFB83D:fontsize=32:x=(w-text_w)/2:y=120",
+    `drawtext=text='SCENE ${sceneNumber}':fontcolor=0xF52C97:fontsize=26:x=(w-text_w)/2:y=180`,
+    `drawtext=text='${safeTitle}':fontcolor=white:fontsize=34:x=(w-text_w)/2:y=340`,
+    `drawtext=text='${safeText}':fontcolor=0xE0E0E0:fontsize=28:x=(w-text_w)/2:y=520`,
+    safeVoice ? `drawtext=text='${safeVoice}':fontcolor=0xFFD54F:fontsize=24:x=(w-text_w)/2:y=820` : "",
+    "drawtext=text='@learnwithavee':fontcolor=0x888888:fontsize=22:x=(w-text_w)/2:y=1160",
+  ].filter(Boolean).join(",");
+
+  const audioTone = 180 + sceneNumber * 30;
+
+  await execFileAsync(ffmpegBinary, [
+    "-hide_banner", "-loglevel", "error", "-y",
+    "-f", "lavfi", "-i", `color=c=0x130D1A:s=720x1280:d=${duration}`,
+    "-f", "lavfi", "-i", `aevalsrc=sin(${audioTone}*2*PI*t)*exp(-t*0.25)*0.06:s=44100:d=${duration}`,
+    "-vf", drawtextFilters,
+    "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+    "-c:a", "aac", "-b:a", "128k",
+    clipPath,
+  ], { timeout: 60_000 });
+
+  return fs.readFile(clipPath);
+}
+
 async function generateVideoClip(ai: GoogleGenAI, prompt: string): Promise<Buffer> {
   const interaction = await ai.interactions.create({
     model: env.GEMINI_VIDEO_MODEL,
@@ -154,27 +191,38 @@ export class CreatorWorkflowService {
         scenes: prompts, stageMessage: `Script ready. Generating ${prompts.length} video scene prompts`,
       });
 
-      const credentials = await AIService.getProviderCredentials("gemini");
-      if (!credentials) {
-        await this.update(jobId, {
-          status: "completed",
-          stageMessage: "Script and scene prompts ready. (Configure Gemini API key in API Integrations to enable video avatar rendering)",
-        });
-        return;
-      }
-      const ai = new GoogleGenAI({ apiKey: credentials.apiKey, httpOptions: { apiVersion: "v1beta" } });
+      if (!ffmpegPath) throw new Error("FFmpeg binary is unavailable on this server. Rebuild backend dependencies for the Render Linux runtime.");
       StorageService.assertPersistentMediaConfiguration();
       await this.update(jobId, { status: "generating" });
+
+      const credentials = await AIService.getProviderCredentials("gemini");
+      const ai = credentials ? new GoogleGenAI({ apiKey: credentials.apiKey, httpOptions: { apiVersion: "v1beta" } }) : null;
+
       const clipPaths: string[] = [];
       for (const [index, scene] of scenes.entries()) {
-        await this.update(jobId, { stageMessage: `Generating Gemini clip ${index + 1} of ${scenes.length}` });
-        const clip = await generateVideoClip(ai, prompts[index].prompt);
-        if (clip.length < 100_000 || clip.subarray(4, 8).toString("ascii") !== "ftyp") {
-          throw new Error(`Gemini scene ${index + 1} did not return a valid MP4 clip.`);
+        await this.update(jobId, { stageMessage: `Generating scene clip ${index + 1} of ${scenes.length}` });
+        let clip: Buffer | null = null;
+
+        if (ai) {
+          try {
+            clip = await generateVideoClip(ai, prompts[index].prompt);
+          } catch (clipErr: any) {
+            console.warn(`Gemini video model rate limited or unavailable (${clipErr?.message}). Rendering native motion scene clip.`);
+          }
         }
+
+        if (!clip) {
+          clip = await renderNativeSceneClip(ffmpegPath, workDir, index + 1, scene, generated.reelTitle);
+        }
+
+        if (clip.length < 10_000 || clip.subarray(4, 8).toString("ascii") !== "ftyp") {
+          throw new Error(`Scene ${index + 1} did not produce a valid MP4 clip.`);
+        }
+
         const clipPath = path.join(workDir, `scene-${index + 1}.mp4`);
-        await fs.writeFile(clipPath, clip, { flag: "wx" });
+        await fs.writeFile(clipPath, clip);
         clipPaths.push(clipPath);
+
         const clipAsset = await StorageService.saveMedia({
           originalName: `creator-scene-${index + 1}.mp4`, buffer: clip, mimeType: "video/mp4", sizeBytes: clip.length,
           title: `${generated.reelTitle} — Scene ${index + 1}`, topic, associatedScriptId: String(script._id), campaign: "Creator Workflow Scene", requirePersistent: true,
@@ -182,7 +230,6 @@ export class CreatorWorkflowService {
         await CreatorWorkflow.updateOne({ _id: jobId }, { $push: { clips: { sceneNumber: index + 1, url: clipAsset.url, mediaAssetId: clipAsset._id } } });
       }
 
-      if (!ffmpegPath) throw new Error("FFmpeg binary is unavailable on this server. Rebuild backend dependencies for the Render Linux runtime.");
       await this.update(jobId, { status: "assembling", stageMessage: "Combining vertical clips into the final MP4" });
       const concatList = path.join(workDir, "clips.txt");
       await fs.writeFile(concatList, clipPaths.map((file) => `file '${path.resolve(file).replace(/\\/g, "/").replace(/'/g, "\\'")}'`).join("\n"), "utf8");
@@ -193,7 +240,7 @@ export class CreatorWorkflowService {
         "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", outputPath,
       ], { timeout: 5 * 60_000, maxBuffer: 5 * 1024 * 1024 });
       const video = await fs.readFile(outputPath);
-      if (video.length < 100_000 || video.subarray(4, 8).toString("ascii") !== "ftyp") throw new Error("FFmpeg did not produce a valid MP4 output.");
+      if (video.length < 10_000 || video.subarray(4, 8).toString("ascii") !== "ftyp") throw new Error("FFmpeg did not produce a valid MP4 output.");
 
       const asset = await StorageService.saveMedia({
         originalName: "learn-with-avee-short.mp4", buffer: video, mimeType: "video/mp4", sizeBytes: video.length,

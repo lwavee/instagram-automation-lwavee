@@ -108,15 +108,15 @@ export class AudioService {
         const env1 = Math.exp(-t * 9);
         const env2 = t > 0.08 ? Math.exp(-(t - 0.08) * 8) : 0;
         sample = Math.sin(2 * Math.PI * 659.25 * t) * env1 * 0.28 +
-                 Math.sin(2 * Math.PI * 987.77 * (t - 0.08)) * env2 * 0.32;
+          Math.sin(2 * Math.PI * 987.77 * (t - 0.08)) * env2 * 0.32;
       } else if (type === "success") {
         // Ascending major chord (C5 523Hz, E5 659Hz, G5 784Hz)
         const env1 = Math.exp(-t * 7);
         const env2 = t > 0.07 ? Math.exp(-(t - 0.07) * 7) : 0;
         const env3 = t > 0.14 ? Math.exp(-(t - 0.14) * 6) : 0;
         sample = Math.sin(2 * Math.PI * 523.25 * t) * env1 * 0.22 +
-                 Math.sin(2 * Math.PI * 659.25 * Math.max(0, t - 0.07)) * env2 * 0.24 +
-                 Math.sin(2 * Math.PI * 783.99 * Math.max(0, t - 0.14)) * env3 * 0.28;
+          Math.sin(2 * Math.PI * 659.25 * Math.max(0, t - 0.07)) * env2 * 0.24 +
+          Math.sin(2 * Math.PI * 783.99 * Math.max(0, t - 0.14)) * env3 * 0.28;
       }
 
       const intSample = Math.max(-32768, Math.min(32767, Math.round(sample * 32767)));

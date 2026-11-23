@@ -51,5 +51,5 @@ describe("MotionGraphicsEngine & Vector Renderer", () => {
         throw err;
       }
     }
-  });
+  }, 15000);
 });

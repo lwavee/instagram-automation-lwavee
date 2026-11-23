@@ -11,8 +11,15 @@ describe("VoiceoverService", () => {
     }
   });
 
-  it("handles empty or blank text gracefully", async () => {
-    const result = await VoiceoverService.generate("   ");
-    expect(result).toBeNull();
+  it("handles empty or blank text gracefully with explicit validation error", async () => {
+    await expect(VoiceoverService.generate("   ")).rejects.toThrow(/empty/);
+  });
+
+  it("exposes production neural voices and phonetically normalizes tech terms", () => {
+    expect(VoiceoverService.VOICES.length).toBeGreaterThan(3);
+    const cleaned = VoiceoverService.cleanForSpeech("Learn how this AI and API works inside the App");
+    expect(cleaned).toContain("ए आई");
+    expect(cleaned).toContain("ए पी आई");
+    expect(cleaned).toContain("ऐप");
   });
 });

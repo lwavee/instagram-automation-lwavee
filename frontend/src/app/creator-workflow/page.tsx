@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, Check, CheckCircle2, Clapperboard, Copy, Download, ExternalLink, Image as ImageIcon, LoaderCircle, RotateCcw, Search, Sparkles, Youtube } from "lucide-react";
+import { AlertTriangle, Check, CheckCircle2, Clapperboard, Copy, Download, ExternalLink, Image as ImageIcon, LoaderCircle, RotateCcw, Search, Sparkles, Volume2, Youtube } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -31,6 +31,14 @@ const fmt = (value: number) => new Intl.NumberFormat("en-IN").format(value);
 export default function CreatorWorkflowPage() {
   const [niche, setNiche] = useState("AI tools, software tutorials, cybersecurity, and web development for Indian students and creators");
   const [topic, setTopic] = useState("");
+  const [videoStyle, setVideoStyle] = useState("motion-graphics");
+  const [voiceId, setVoiceId] = useState("hi-IN-MadhurNeural");
+  const [voices, setVoices] = useState<Array<{ id: string; name: string; gender: string; language?: string }>>([
+    { id: "hi-IN-MadhurNeural", name: "Madhur (Natural Indian Male Educator — Recommended)", gender: "Male", language: "Hindi/Hinglish" },
+    { id: "hi-IN-SwaraNeural", name: "Swara (Natural Indian Female Educator)", gender: "Female", language: "Hindi/Hinglish" },
+    { id: "en-IN-PrabhatNeural", name: "Prabhat (Indian Male Tech English)", gender: "Male", language: "Indian English" },
+    { id: "en-IN-NeerjaNeural", name: "Neerja (Indian Female Tech English)", gender: "Female", language: "Indian English" },
+  ]);
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [active, setActive] = useState<Workflow | null>(null);
   const [loading, setLoading] = useState(false);
@@ -47,10 +55,17 @@ export default function CreatorWorkflowPage() {
 
   const load = useCallback(async () => {
     try {
-      const [data, status] = await Promise.all([api.getCreatorWorkflows(), api.getCreatorWorkflowReadiness()]);
+      const [data, status, voiceData] = await Promise.all([
+        api.getCreatorWorkflows(),
+        api.getCreatorWorkflowReadiness(),
+        api.getCreatorWorkflowVoices().catch(() => null),
+      ]);
       const items: Workflow[] = data.workflows || [];
       setReadiness(status as { ready: boolean; missing: string[] });
       setWorkflows(items);
+      if (voiceData?.voices?.length) {
+        setVoices(voiceData.voices);
+      }
       setActive((current) => {
         if (current) return items.find((item) => item._id === current._id) || current;
         return items.find((item) => busy(item.status)) || items[0] || null;
@@ -84,9 +99,15 @@ export default function CreatorWorkflowPage() {
     if (event) event.preventDefault();
     if (!readiness?.ready) return;
     setLoading(true);
-    setMessage("Starting research and script generation…");
+    setMessage("Starting research, neural voiceover, and motion graphics generation…");
     try {
-      const data = await api.startCreatorWorkflow({ idempotencyKey: crypto.randomUUID(), topic: topic.trim(), niche: niche.trim() });
+      const data = await api.startCreatorWorkflow({
+        idempotencyKey: crypto.randomUUID(),
+        topic: topic.trim(),
+        niche: niche.trim(),
+        voiceId,
+        videoStyle,
+      });
       const workflow = data.workflow as Workflow;
       setActive(workflow);
       setWorkflows((items) => [workflow, ...items.filter((item) => item._id !== workflow._id)]);
@@ -124,6 +145,38 @@ export default function CreatorWorkflowPage() {
       <form onSubmit={start} className="space-y-4 px-6 pb-6">
         <label className="block space-y-2 text-sm"><span className="font-medium">Niche</span><input required maxLength={200} value={niche} onChange={(event) => setNiche(event.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2" /></label>
         <label className="block space-y-2 text-sm"><span className="font-medium">Optional topic</span><input maxLength={160} value={topic} onChange={(event) => setTopic(event.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2" placeholder="Leave blank to let AI choose from trending research" /></label>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+          <label className="block space-y-2 text-sm">
+            <span className="font-medium flex items-center gap-1.5"><Sparkles className="h-4 w-4 text-brand-400" /> Video Animation Style</span>
+            <select
+              value={videoStyle}
+              onChange={(e) => setVideoStyle(e.target.value as "motion-graphics" | "ai-avatar")}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-brand-500"
+            >
+              <option value="motion-graphics">✨ Premium 2D/2.5D Motion Graphics (Vector &amp; Device Mockups — Fast, $0 Free)</option>
+              <option value="ai-avatar">🤖 Gemini 3D AI Video (Requires Paid Google Cloud AI Credits)</option>
+            </select>
+            <p className="text-xs text-muted-foreground">Motion Graphics uses device mockups, spring animations, dynamic island, and zero-cost high-retention visual storytelling.</p>
+          </label>
+
+          <label className="block space-y-2 text-sm">
+            <span className="font-medium flex items-center gap-1.5"><Volume2 className="h-4 w-4 text-brand-400" /> Hindi / Hinglish Neural Voiceover</span>
+            <select
+              value={voiceId}
+              onChange={(e) => setVoiceId(e.target.value)}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-brand-500"
+            >
+              {voices.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name} ({v.gender}{v.language ? `, ${v.language}` : ""})
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">Natural Indian creator intonation with Hindi-English phonetic mapping for tech terms.</p>
+          </label>
+        </div>
+
         <div role="status" className={`rounded-lg border p-3 text-xs ${readiness?.ready ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100" : "border-amber-500/40 bg-amber-500/10 text-amber-100"}`}>
           {readiness?.ready ? <CheckCircle2 className="mr-1 inline h-4 w-4" /> : <AlertTriangle className="mr-1 inline h-4 w-4" />}
           {readiness === null ? "Checking backend requirements…" : readiness.ready ? "Required services are configured. Generated content is saved for you; nothing is published automatically." : <>Workflow unavailable until the backend is configured: <ul className="mt-2 list-disc space-y-1 pl-6">{readiness.missing.map((item) => <li key={item}>{item}</li>)}</ul></>}

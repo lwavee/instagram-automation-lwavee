@@ -112,6 +112,7 @@ export const api = {
   startCreatorWorkflow: (data: any) => apiRequest("/api/creator-workflow/start", { method: "POST", data }),
   getCreatorWorkflows: () => apiRequest("/api/creator-workflow"),
   getCreatorWorkflowReadiness: () => apiRequest("/api/creator-workflow/readiness"),
+  getCreatorWorkflowVoices: () => apiRequest("/api/creator-workflow/voices"),
   getCreatorWorkflow: (id: string) => apiRequest(`/api/creator-workflow/${id}`),
   disconnectYouTube: () => apiRequest("/api/youtube/disconnect", { method: "POST" }),
 

@@ -3,10 +3,10 @@ import https from "https";
 export class VoiceoverService {
   /**
    * Generates a realistic spoken voiceover MP3 for Hindi/Hinglish text.
-   * Free, zero-API-key, human-grade Google TTS audio.
+   * Free, zero-API-key, human-grade Google TTS audio with phonetic tech mapping.
    */
   static async generate(text: string, lang = "hi"): Promise<Buffer | null> {
-    const clean = text.replace(/[\r\n\t]+/g, " ").replace(/[#*`_~]/g, "").trim();
+    const clean = this.cleanForSpeech(text);
     if (!clean) return null;
 
     try {
@@ -26,6 +26,20 @@ export class VoiceoverService {
       console.warn("Voiceover TTS generation fallback:", err?.message || err);
       return null;
     }
+  }
+
+  static cleanForSpeech(text: string): string {
+    return text
+      .replace(/\bAPI\b/gi, "ए पी आई")
+      .replace(/\bAI\b/gi, "ए आई")
+      .replace(/\bUI\b/gi, "यू आई")
+      .replace(/\bUX\b/gi, "यू एक्स")
+      .replace(/\bURL\b/gi, "यू आर एल")
+      .replace(/\bDB\b/gi, "डेटाबेस")
+      .replace(/\bApp\b/gi, "ऐप")
+      .replace(/[\r\n\t]+/g, " ")
+      .replace(/[#*`_~]/g, "")
+      .trim();
   }
 
   private static fetchTTSChunk(text: string, lang: string): Promise<Buffer> {

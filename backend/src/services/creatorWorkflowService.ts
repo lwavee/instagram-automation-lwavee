@@ -14,6 +14,7 @@ import { StorageService } from "./storageService";
 import { ObservedYouTubeVideo, YouTubeResearchService } from "./youtubeResearchService";
 import { renderSceneCard } from "../utils/ppmRenderer";
 import { VoiceoverService } from "./voiceoverService";
+import { AudioService } from "./audioService";
 
 const execFileAsync = promisify(execFile);
 const AVATAR_STYLE = "An original, friendly stylized 3D Indian tech educator avatar, warm expression, consistent face, short dark hair, teal hoodie, clean modern studio. Keep the same identity, outfit and visual style across every clip. Do not imitate a real creator or a copyrighted character.";
@@ -34,6 +35,7 @@ async function renderNativeSceneClip(
   const duration = scene.durationSeconds || 6;
   const ppmPath = path.join(workDir, `scene-frame-${sceneNumber}.ppm`);
   const voicePath = path.join(workDir, `scene-voice-${sceneNumber}.mp3`);
+  const musicPath = path.join(workDir, `scene-music-${sceneNumber}.wav`);
   const clipPath = path.join(workDir, `native-scene-${sceneNumber}.mp4`);
 
   const cardBuffer = renderSceneCard({
@@ -47,9 +49,13 @@ async function renderNativeSceneClip(
 
   await fs.writeFile(ppmPath, cardBuffer);
 
-  // Generate real Hindi/Hinglish spoken voiceover audio!
+  // 1. Generate real Hindi/Hinglish spoken voiceover audio!
   const voiceText = scene.voiceoverHinglish || scene.voiceoverHindi || scene.onScreenText || "";
   const voiceBuffer = await VoiceoverService.generate(voiceText, "hi");
+
+  // 2. Generate original ambient lo-fi melodic tech background music bed
+  const musicBuffer = AudioService.generateAmbientBed(duration + 4);
+  await fs.writeFile(musicPath, musicBuffer);
 
   const ffmpegArgs: string[] = [
     "-hide_banner", "-loglevel", "error", "-y",
@@ -60,18 +66,21 @@ async function renderNativeSceneClip(
     await fs.writeFile(voicePath, voiceBuffer);
     ffmpegArgs.push(
       "-i", voicePath,
+      "-i", musicPath,
+      "-filter_complex",
+      "[0:v]scale=720:1280[vout];[1:a]volume=1.45,bass=g=3:f=180[voice];[2:a]volume=0.18[music];[voice][music]amix=inputs=2:duration=first[aout]",
+      "-map", "[vout]", "-map", "[aout]",
       "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
       "-c:a", "aac", "-b:a", "128k",
       "-shortest",
       clipPath
     );
   } else {
-    const audioTone = 180 + sceneNumber * 35;
     ffmpegArgs.push(
-      "-f", "lavfi", "-i", `aevalsrc=sin(${audioTone}*2*PI*t)*exp(-t*0.25)*0.06:s=44100:d=${duration}`,
-      "-t", String(duration),
+      "-i", musicPath,
       "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
       "-c:a", "aac", "-b:a", "128k",
+      "-t", String(duration),
       clipPath
     );
   }
@@ -81,9 +90,73 @@ async function renderNativeSceneClip(
   await Promise.all([
     fs.unlink(ppmPath).catch(() => undefined),
     fs.unlink(voicePath).catch(() => undefined),
+    fs.unlink(musicPath).catch(() => undefined),
   ]);
 
   return fs.readFile(clipPath);
+}
+
+async function assembleClipsWithTransitions(
+  ffmpegBinary: string,
+  workDir: string,
+  clipPaths: string[],
+  outputPath: string
+): Promise<void> {
+  if (clipPaths.length <= 1) {
+    if (clipPaths[0]) await fs.copyFile(clipPaths[0], outputPath);
+    return;
+  }
+
+  try {
+    const inputs: string[] = [];
+    clipPaths.forEach((clip) => inputs.push("-i", clip));
+
+    const transitions = ["slideleft", "smoothup", "fade", "wiperight"];
+    const vFilters: string[] = [];
+    const aFilters: string[] = [];
+
+    let lastV = "0:v";
+    let lastA = "0:a";
+    let curOffset = 5.5;
+
+    for (let i = 1; i < clipPaths.length; i++) {
+      const nextV = `${i}:v`;
+      const nextA = `${i}:a`;
+      const trans = transitions[(i - 1) % transitions.length];
+      const outV = i === clipPaths.length - 1 ? "vout" : `v0${i}`;
+      const outA = i === clipPaths.length - 1 ? "aout" : `a0${i}`;
+
+      vFilters.push(`[${lastV}][${nextV}]xfade=transition=${trans}:duration=0.5:offset=${curOffset.toFixed(1)}[${outV}]`);
+      aFilters.push(`[${lastA}][${nextA}]acrossfade=d=0.5[${outA}]`);
+
+      lastV = outV;
+      lastA = outA;
+      curOffset += 5.5;
+    }
+
+    const filterComplex = [...vFilters, ...aFilters].join(";");
+    await execFileAsync(ffmpegBinary, [
+      "-hide_banner", "-loglevel", "error", "-y",
+      ...inputs,
+      "-filter_complex", filterComplex,
+      "-map", "[vout]", "-map", "[aout]",
+      "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
+      "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
+      outputPath,
+    ], { timeout: 3 * 60_000, maxBuffer: 5 * 1024 * 1024 });
+    return;
+  } catch (transErr) {
+    console.warn("Transition assembly fallback to concat:", transErr);
+  }
+
+  // Safe fallback to concat
+  const concatList = path.join(workDir, "clips.txt");
+  await fs.writeFile(concatList, clipPaths.map((file) => `file '${path.resolve(file).replace(/\\/g, "/").replace(/'/g, "\\'")}'`).join("\n"), "utf8");
+  await execFileAsync(ffmpegBinary, [
+    "-hide_banner", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i", concatList,
+    "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
+    "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", outputPath,
+  ], { timeout: 5 * 60_000, maxBuffer: 5 * 1024 * 1024 });
 }
 
 async function generateVideoClip(ai: GoogleGenAI, prompt: string): Promise<Buffer> {
@@ -258,15 +331,9 @@ export class CreatorWorkflowService {
         await CreatorWorkflow.updateOne({ _id: jobId }, { $push: { clips: { sceneNumber: index + 1, url: clipAsset.url, mediaAssetId: clipAsset._id } } });
       }
 
-      await this.update(jobId, { status: "assembling", stageMessage: "Combining vertical clips into the final MP4" });
-      const concatList = path.join(workDir, "clips.txt");
-      await fs.writeFile(concatList, clipPaths.map((file) => `file '${path.resolve(file).replace(/\\/g, "/").replace(/'/g, "\\'")}'`).join("\n"), "utf8");
+      await this.update(jobId, { status: "assembling", stageMessage: "Applying scene animations and transitions into the final Short" });
       const outputPath = path.join(workDir, "learn-with-avee-short.mp4");
-      await execFileAsync(ffmpegPath, [
-        "-hide_banner", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i", concatList,
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", outputPath,
-      ], { timeout: 5 * 60_000, maxBuffer: 5 * 1024 * 1024 });
+      await assembleClipsWithTransitions(ffmpegPath, workDir, clipPaths, outputPath);
       const video = await fs.readFile(outputPath);
       if (video.length < 10_000 || video.subarray(4, 8).toString("ascii") !== "ftyp") throw new Error("FFmpeg did not produce a valid MP4 output.");
 

@@ -260,31 +260,37 @@ export function renderSceneCard(options: {
   const canvas = new PPMCanvas(720, 1280);
   canvas.fillGradient(theme.top, theme.bottom);
 
-  // 1. Channel brand header badge
-  canvas.drawBadge("LEARN WITH AVEE", 90, [255, 184, 61], [40, 25, 10], 3);
+  // 1. Top progress bar
+  const progressRatio = sceneNumber / totalScenes;
+  const barWidth = Math.round(640 * progressRatio);
+  canvas.fillRect(40, 24, 640, 6, [40, 30, 50]); // track background
+  canvas.fillRect(40, 24, barWidth, 6, theme.accent); // animated progress fill
 
-  // 2. Scene indicator pill
-  canvas.drawBadge(`SCENE ${sceneNumber} OF ${totalScenes}`, 160, theme.accent, theme.cardBg, 2);
+  // 2. Channel brand header badge
+  canvas.drawBadge("LEARN WITH AVEE • TECH EXPLAINER", 50, [255, 184, 61], [36, 22, 10], 2);
 
-  // 3. Reel title / topic card
-  canvas.drawCard(40, 230, 640, 220, theme.accent, theme.cardBg, 3);
+  // 3. Scene indicator pill & category
+  canvas.drawBadge(`SCENE ${sceneNumber} OF ${totalScenes} ✦ THE ANALOGY`, 110, theme.accent, theme.cardBg, 2);
+
+  // 4. Hero Topic / Headline Card
+  canvas.drawCard(40, 180, 640, 250, theme.accent, theme.cardBg, 3);
   const cleanTitle = (reelTitle || "AI Content Automation").replace(/['"\\]/g, "");
-  canvas.drawWrapped(cleanTitle, 65, 265, 590, 4, [255, 255, 255], 40);
+  canvas.drawWrapped(cleanTitle, 65, 215, 590, 4, [255, 255, 255], 38);
 
-  // 4. Key Takeaway / Visual Description card
-  canvas.drawCard(40, 480, 640, 320, [45, 212, 191], [15, 26, 32], 3);
-  canvas.drawText("KEY TAKEAWAY:", 65, 510, 2, [45, 212, 191]);
-  const cleanKey = (onScreenText || "High-retention AI tools for creators and students").replace(/['"\\]/g, "");
-  canvas.drawWrapped(cleanKey, 65, 550, 590, 3, [240, 240, 240], 32);
+  // 5. Visual Concept / Analogy Box
+  canvas.drawCard(40, 460, 640, 340, [45, 212, 191], [14, 26, 32], 3);
+  canvas.drawBadge("💡 CORE CONCEPT & METAPHOR", 480, [45, 212, 191], [10, 35, 30], 2);
+  const cleanKey = (onScreenText || "High-retention tech explanation for creators").replace(/['"\\]/g, "");
+  canvas.drawWrapped(cleanKey, 65, 535, 590, 3, [240, 245, 245], 32);
 
-  // 5. Spoken Voiceover / Subtitles card
-  canvas.drawCard(40, 830, 640, 310, [255, 213, 79], [32, 26, 14], 2);
-  canvas.drawText("VOICEOVER / SUBTITLES:", 65, 855, 2, [255, 213, 79]);
-  const cleanVoice = (voiceoverText || "Follow for practical tutorials and daily tech growth").replace(/['"\\]/g, "");
+  // 6. Spoken Subtitles & Dialogue Card
+  canvas.drawCard(40, 830, 640, 310, [255, 213, 79], [30, 24, 12], 2);
+  canvas.drawBadge("🎙️ NARRATION & SUBTITLES", 845, [255, 213, 79], [40, 32, 10], 2);
+  const cleanVoice = (voiceoverText || "Subscribe for practical tech tutorials and daily growth").replace(/['"\\]/g, "");
   canvas.drawWrapped(cleanVoice, 65, 895, 590, 3, [255, 238, 160], 32);
 
-  // 6. Watermark Footer
-  canvas.drawCenteredText(`${handle} • Follow for more tips`, 1190, 2, [167, 139, 250]);
+  // 7. Watermark Footer
+  canvas.drawCenteredText(`${handle} • Follow for daily AI shorts`, 1195, 2, [167, 139, 250]);
 
   return canvas.toBuffer();
 }

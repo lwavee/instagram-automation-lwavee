@@ -190,6 +190,7 @@ export class MotionGraphicsEngine {
     const scanY = 160 + Math.sin(t * Math.PI * 4) * 80;
 
     const isCyber = /hack|cyber|secur|protect|shield|firewall/i.test(`${spec.headline} ${spec.subheadline} ${spec.badgeText}`);
+    const isMarketing = /market|growth|seo|ads|campaign|sales|funnel|digital/i.test(`${spec.headline} ${spec.subheadline} ${spec.badgeText}`);
 
     let screenUI = "";
     if (isCyber) {
@@ -215,6 +216,38 @@ export class MotionGraphicsEngine {
         <!-- Bottom Status Button -->
         <rect x="24" y="420" width="280" height="56" rx="18" fill="#10B981"/>
         <text x="164" y="455" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="#FFFFFF" text-anchor="middle">System Protected</text>
+      `;
+    } else if (isMarketing) {
+      screenUI = `
+        <text x="12" y="28" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#0F172A">Ad Campaign ROI</text>
+        <text x="12" y="52" font-family="Arial, sans-serif" font-size="13" fill="#64748B">Digital Marketing &amp; Analytics</text>
+        
+        <!-- Analytics Dashboard Card -->
+        <rect x="24" y="80" width="280" height="280" rx="28" fill="#0F172A" stroke="#6366F1" stroke-width="2"/>
+        
+        <!-- ROI Stat Box -->
+        <rect x="44" y="100" width="240" height="64" rx="16" fill="#1E293B"/>
+        <text x="60" y="125" font-family="Arial, sans-serif" font-size="12" fill="#94A3B8">ROAS Multiplier</text>
+        <text x="60" y="152" font-family="Arial, sans-serif" font-size="22" font-weight="bold" fill="#22C55E">+340% Growth</text>
+        
+        <!-- Animated Bar Chart -->
+        <g transform="translate(60, 290)">
+          <rect x="0" y="-30" width="28" height="30" rx="6" fill="#475569"/>
+          <rect x="42" y="-60" width="28" height="60" rx="6" fill="#6366F1"/>
+          <rect x="84" y="-90" width="28" height="90" rx="6" fill="#38BDF8"/>
+          <rect x="126" y="-120" width="28" height="120" rx="6" fill="#10B981" filter="url(#glow-blue)"/>
+          <text x="14" y="18" font-family="Arial, sans-serif" font-size="10" fill="#64748B" text-anchor="middle">SEO</text>
+          <text x="56" y="18" font-family="Arial, sans-serif" font-size="10" fill="#64748B" text-anchor="middle">Ads</text>
+          <text x="98" y="18" font-family="Arial, sans-serif" font-size="10" fill="#64748B" text-anchor="middle">Social</text>
+          <text x="140" y="18" font-family="Arial, sans-serif" font-size="10" fill="#22C55E" font-weight="bold" text-anchor="middle">ROI</text>
+        </g>
+
+        <!-- Scanning Beam -->
+        ${MotionComponents.scanBeam(40, scanY, 288)}
+
+        <!-- Bottom Status Button -->
+        <rect x="24" y="420" width="280" height="56" rx="18" fill="#6366F1"/>
+        <text x="164" y="455" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="#FFFFFF" text-anchor="middle">Campaign Live: Scale Now</text>
       `;
     } else {
       screenUI = `

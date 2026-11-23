@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, Clapperboard, Download, ExternalLink, LoaderCircle, Search, Sparkles, Youtube } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clapperboard, Download, ExternalLink, LoaderCircle, RotateCcw, Search, Sparkles, Youtube } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -130,7 +130,15 @@ export default function CreatorWorkflowPage() {
           <CardTitle className="flex items-center justify-between gap-3"><span>{active.topic || "Creator workflow"}</span><span className="rounded-full border border-border px-3 py-1 text-xs font-medium capitalize">{active.status}</span></CardTitle>
           <CardDescription className="flex items-center gap-2">{busy(active.status) ? <LoaderCircle className="h-4 w-4 animate-spin" /> : active.status === "completed" ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : <AlertTriangle className="h-4 w-4 text-amber-400" />}{active.stageMessage}</CardDescription>
         </CardHeader>
-        {active.errorMessage && <p className="px-6 pb-5 text-sm text-red-300">{active.errorMessage}</p>}
+        {active.errorMessage && <div className="mx-6 mb-5 rounded-lg border border-red-500/30 bg-red-950/20 p-4 space-y-3">
+          <p className="font-mono text-xs text-red-300 break-words">{active.errorMessage}</p>
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-red-500/20">
+            <p className="text-xs text-muted-foreground">This failure was recorded in a past run. The Linux video engine has been updated.</p>
+            <Button size="sm" variant="secondary" onClick={() => void start()} disabled={loading || !readiness?.ready}>
+              <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> Start New Video
+            </Button>
+          </div>
+        </div>}
         {active.status === "completed" && active.mediaUrl && <div className="flex flex-wrap gap-3 px-6 pb-6">
           <a href={active.mediaUrl} target="_blank" rel="noreferrer" className="inline-flex items-center rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white"><Download className="mr-2 h-4 w-4" />Download / preview MP4</a>
           <Link href="/youtube" className="inline-flex items-center rounded-md border border-border px-4 py-2 text-sm"><Youtube className="mr-2 h-4 w-4" />YouTube Studio upload</Link>

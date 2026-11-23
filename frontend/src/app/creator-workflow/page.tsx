@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, Clapperboard, Download, ExternalLink, LoaderCircle, RotateCcw, Search, Sparkles, Youtube } from "lucide-react";
+import { AlertTriangle, Check, CheckCircle2, Clapperboard, Copy, Download, ExternalLink, Image as ImageIcon, LoaderCircle, RotateCcw, Search, Sparkles, Youtube } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -19,6 +19,7 @@ type Workflow = {
   scenes: Array<{ sceneNumber: number; prompt: string; durationSeconds: number }>;
   clips: Array<{ sceneNumber: number; url: string }>;
   mediaUrl?: string;
+  coverImageUrl?: string;
   errorMessage?: string;
   scriptId?: { reelTitle: string; openingHook: string; fullVoiceover: string; caption: string; hashtags: string[] };
   createdAt: string;
@@ -34,7 +35,15 @@ export default function CreatorWorkflowPage() {
   const [active, setActive] = useState<Workflow | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [copied, setCopied] = useState(false);
   const [readiness, setReadiness] = useState<{ ready: boolean; missing: string[] } | null>(null);
+
+  const copyCaption = (captionText: string, tags: string[] = []) => {
+    const full = `${captionText}\n\n${tags.join(" ")}`;
+    void navigator.clipboard.writeText(full);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const load = useCallback(async () => {
     try {
@@ -139,18 +148,64 @@ export default function CreatorWorkflowPage() {
             </Button>
           </div>
         </div>}
-        {active.status === "completed" && active.mediaUrl && <div className="flex flex-wrap gap-3 px-6 pb-6">
-          <a href={active.mediaUrl} target="_blank" rel="noreferrer" className="inline-flex items-center rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white"><Download className="mr-2 h-4 w-4" />Download / preview MP4</a>
-          <Link href="/youtube" className="inline-flex items-center rounded-md border border-border px-4 py-2 text-sm"><Youtube className="mr-2 h-4 w-4" />YouTube Studio upload</Link>
-          <Link href={`/instagram-downloads?workflow=${active._id}`} className="inline-flex items-center rounded-md border border-border px-4 py-2 text-sm">Instagram download tab <ExternalLink className="ml-2 h-4 w-4" /></Link>
-        </div>}
+        {active.status === "completed" && (
+          <div className="space-y-4 px-6 pb-6">
+            <div className="flex flex-wrap gap-3">
+              {active.mediaUrl && (
+                <a href={active.mediaUrl} target="_blank" rel="noreferrer" className="inline-flex items-center rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500">
+                  <Download className="mr-2 h-4 w-4" /> Download / preview MP4
+                </a>
+              )}
+              {active.coverImageUrl && (
+                <a href={active.coverImageUrl} target="_blank" rel="noreferrer" className="inline-flex items-center rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-secondary">
+                  <ImageIcon className="mr-2 h-4 w-4" /> Download Cover Image
+                </a>
+              )}
+              <Link href="/youtube" className="inline-flex items-center rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-secondary">
+                <Youtube className="mr-2 h-4 w-4" /> YouTube Studio upload
+              </Link>
+              <Link href={`/instagram-downloads?workflow=${active._id}`} className="inline-flex items-center rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-secondary">
+                Instagram download tab <ExternalLink className="ml-2 h-4 w-4" />
+              </Link>
+            </div>
+
+            {active.coverImageUrl && (
+              <div className="mt-2 flex flex-col sm:flex-row items-center gap-5 rounded-lg border border-border bg-secondary/20 p-4">
+                <img src={active.coverImageUrl} alt="Short Cover Thumbnail" className="w-28 h-48 object-cover rounded-md border border-border/80 shadow" />
+                <div className="space-y-1.5 text-sm">
+                  <span className="rounded-full bg-brand-500/20 text-brand-300 px-2.5 py-0.5 text-xs font-semibold">9:16 COVER THUMBNAIL</span>
+                  <p className="font-semibold text-base">High-CTR Vertical Cover Ready</p>
+                  <p className="text-muted-foreground text-xs max-w-lg leading-relaxed">Generated with bold high-contrast text, analogy hook badges, and channel branding for maximum click-through rate on Instagram Reels and YouTube Shorts.</p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </Card>
 
       {active.research?.length > 0 && <Card><CardHeader><CardTitle>Recent niche video signals</CardTitle><CardDescription>Observed public titles, channel names, views, and views per hour over the last 90 days. This ranking does not predict results.</CardDescription></CardHeader>
         <div className="space-y-2 px-6 pb-6">{active.research.map((item) => <a key={item.videoId} href={item.url} target="_blank" rel="noreferrer" className="block rounded-lg border border-border p-3 hover:bg-secondary/50"><p className="font-medium">{item.title}</p><p className="mt-1 text-xs text-muted-foreground">{item.channelTitle} · {fmt(item.viewCount)} views · {fmt(item.viewsPerHour)} views/hour</p></a>)}</div></Card>}
 
       {active.topicRationale && <Card><CardHeader><CardTitle>Topic angle</CardTitle><CardDescription>{active.topicRationale}</CardDescription></CardHeader></Card>}
-      {active.scriptId && <Card><CardHeader><CardTitle>{active.scriptId.reelTitle}</CardTitle><CardDescription>{active.scriptId.openingHook}</CardDescription></CardHeader><div className="space-y-3 px-6 pb-6"><h3 className="font-semibold">Script</h3><p className="whitespace-pre-wrap text-sm leading-7">{active.scriptId.fullVoiceover}</p><p className="text-sm text-muted-foreground">{active.scriptId.caption}</p><p className="text-xs text-brand-300">{active.scriptId.hashtags?.join(" ")}</p></div></Card>}
+      {active.scriptId && <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between gap-3">
+            <CardTitle>{active.scriptId.reelTitle}</CardTitle>
+            <Button size="sm" variant="outline" onClick={() => copyCaption(active.scriptId?.caption || "", active.scriptId?.hashtags || [])}>
+              {copied ? <Check className="mr-1.5 h-3.5 w-3.5 text-emerald-400" /> : <Copy className="mr-1.5 h-3.5 w-3.5" />}
+              {copied ? "Copied!" : "Copy Caption & Tags"}
+            </Button>
+          </div>
+          <CardDescription>{active.scriptId.openingHook}</CardDescription>
+        </CardHeader>
+        <div className="space-y-3 px-6 pb-6">
+          <h3 className="font-semibold text-sm">Hindi / Hinglish Voiceover Script</h3>
+          <p className="whitespace-pre-wrap text-sm leading-7 rounded-md bg-secondary/30 p-3 border border-border/50">{active.scriptId.fullVoiceover}</p>
+          <h3 className="font-semibold text-sm pt-2">Instagram Caption</h3>
+          <p className="text-sm text-muted-foreground whitespace-pre-wrap rounded-md bg-secondary/30 p-3 border border-border/50">{active.scriptId.caption}</p>
+          <p className="text-xs text-brand-300 font-mono">{active.scriptId.hashtags?.join(" ")}</p>
+        </div>
+      </Card>}
       {active.scenes?.length > 0 && <Card><CardHeader><CardTitle>Scene-by-scene generation prompts</CardTitle><CardDescription>These exact prompts were submitted to Gemini for clip generation.</CardDescription></CardHeader><div className="space-y-3 px-6 pb-6">{active.scenes.map((scene) => <details key={scene.sceneNumber} className="rounded-lg border border-border p-3"><summary className="cursor-pointer font-medium">Scene {scene.sceneNumber} · {scene.durationSeconds} seconds</summary><p className="mt-3 whitespace-pre-wrap text-sm text-muted-foreground">{scene.prompt}</p></details>)}</div></Card>}
       {active.clips?.length > 0 && <Card><CardHeader><CardTitle>Generated scene clips</CardTitle><CardDescription>Each successfully generated scene is saved before assembly so it remains recoverable if a later step fails.</CardDescription></CardHeader><div className="space-y-2 px-6 pb-6">{active.clips.map((clip) => <a key={clip.sceneNumber} className="block rounded-lg border border-border p-3 text-sm underline" href={clip.url} target="_blank" rel="noreferrer">Preview or download scene {clip.sceneNumber}</a>)}</div></Card>}
     </section>}

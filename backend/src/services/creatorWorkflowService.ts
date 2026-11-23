@@ -233,7 +233,7 @@ export class CreatorWorkflowService {
       await fs.mkdir(workDir, { recursive: true });
       let research: ObservedYouTubeVideo[] = [];
       try {
-        research = await YouTubeResearchService.analyze(job.niche);
+        research = await YouTubeResearchService.analyze(job.niche, job.requestedTopic);
       } catch (err: any) {
         console.warn("YouTube research API check:", err.message);
       }
@@ -341,8 +341,38 @@ export class CreatorWorkflowService {
         originalName: "learn-with-avee-short.mp4", buffer: video, mimeType: "video/mp4", sizeBytes: video.length,
         title: generated.reelTitle, topic, associatedScriptId: String(script._id), campaign: "Creator Workflow", requirePersistent: true,
       });
+
+      // Render 9:16 high-contrast Cover Image (Thumbnail)
+      let coverUrl = "";
+      let coverAssetId: any = undefined;
+      try {
+        const coverPpm = path.join(workDir, "cover.ppm");
+        const coverJpg = path.join(workDir, "cover.jpg");
+        const coverCardBuffer = renderSceneCard({
+          sceneNumber: 1,
+          totalScenes: 1,
+          reelTitle: generated.reelTitle,
+          onScreenText: generated.openingHook || topic,
+          voiceoverText: "LEARN WITH AVEE • NEW SHORT",
+          handle: "@learnwithavee",
+        });
+        await fs.writeFile(coverPpm, coverCardBuffer);
+        await execFileAsync(ffmpegPath, ["-hide_banner", "-loglevel", "error", "-y", "-i", coverPpm, "-q:v", "2", coverJpg]);
+        const coverBuffer = await fs.readFile(coverJpg);
+        const coverAsset = await StorageService.saveMedia({
+          originalName: "cover.jpg", buffer: coverBuffer, mimeType: "image/jpeg", sizeBytes: coverBuffer.length,
+          title: `${generated.reelTitle} — Cover Image`, topic, associatedScriptId: String(script._id), campaign: "Creator Workflow Cover", requirePersistent: true,
+        });
+        coverUrl = coverAsset.url;
+        coverAssetId = coverAsset._id;
+      } catch (coverErr) {
+        console.warn("Cover image generation fallback:", coverErr);
+      }
+
       await this.update(jobId, {
-        mediaAssetId: asset._id as any, mediaUrl: asset.url, status: "completed",
+        mediaAssetId: asset._id as any, mediaUrl: asset.url,
+        ...(coverUrl && { coverImageUrl: coverUrl, coverImageId: coverAssetId }),
+        status: "completed",
         stageMessage: "Short assembled and saved. Review and download it from this page.",
       });
     } catch (error: any) {

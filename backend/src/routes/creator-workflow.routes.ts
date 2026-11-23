@@ -28,7 +28,9 @@ router.post("/start", validate(startSchema), async (req: AuthenticatedRequest, r
 router.get("/", async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const workflows = await CreatorWorkflow.find({ userId: req.user!._id })
-      .sort({ createdAt: -1 }).limit(10).select("niche requestedTopic topic topicRationale status stageMessage scenes clips research mediaUrl errorMessage scriptId mediaAssetId createdAt updatedAt");
+      .sort({ createdAt: -1 }).limit(10)
+      .populate("scriptId", "reelTitle openingHook fullVoiceover caption hashtags scenes suggestedDurationSeconds")
+      .select("niche requestedTopic topic topicRationale status stageMessage scenes clips research mediaUrl coverImageUrl errorMessage scriptId mediaAssetId createdAt updatedAt");
     workflows.filter((workflow) => workflow.status === "queued").forEach((workflow) => CreatorWorkflowService.runInBackground(String(workflow._id)));
     res.json({ success: true, data: { workflows } });
   } catch (error) { next(error); }

@@ -17,6 +17,8 @@ export interface ICreatorWorkflow extends Document {
   research: Array<{ videoId: string; title: string; channelId: string; channelTitle: string; publishedAt: string; viewCount: number; viewsPerHour: number; url: string }>;
   mediaAssetId?: mongoose.Types.ObjectId;
   mediaUrl?: string;
+  coverImageId?: mongoose.Types.ObjectId;
+  coverImageUrl?: string;
   errorMessage?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -40,6 +42,8 @@ const schema = new Schema<ICreatorWorkflow>({
   }, { _id: false })], default: [] },
   mediaAssetId: { type: Schema.Types.ObjectId, ref: "MediaAsset" },
   mediaUrl: { type: String, default: "" },
+  coverImageId: { type: Schema.Types.ObjectId, ref: "MediaAsset" },
+  coverImageUrl: { type: String, default: "" },
   errorMessage: { type: String, default: "" },
 }, { timestamps: true });
 

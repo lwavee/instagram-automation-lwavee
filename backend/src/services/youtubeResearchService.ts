@@ -19,11 +19,13 @@ export class YouTubeResearchError extends Error {
 }
 
 export class YouTubeResearchService {
-  static async analyze(niche: string): Promise<ObservedYouTubeVideo[]> {
+  static async analyze(niche: string, topic?: string): Promise<ObservedYouTubeVideo[]> {
     const key = process.env.YOUTUBE_DATA_API_KEY;
     if (!key) throw new YouTubeResearchError("Add a YouTube Data API key to the backend as YOUTUBE_DATA_API_KEY to analyze niche videos.");
 
-    const query = `${niche} India tutorial`;
+    const query = topic && topic.trim()
+      ? `${topic.trim()} ${niche} tutorial`.slice(0, 100)
+      : `${niche} India tutorial`;
     const publishedAfter = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
     try {
       const search = await axios.get("https://youtube.googleapis.com/youtube/v3/search", {

@@ -6,15 +6,16 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { promisify } from "util";
+import { Resvg } from "@resvg/resvg-js";
 import { env } from "../config/env";
 import { CreatorWorkflow, ICreatorWorkflow } from "../models/CreatorWorkflow";
 import { GeneratedScript } from "../models/GeneratedScript";
 import { AIService, AIServiceError } from "./aiService";
 import { StorageService } from "./storageService";
 import { ObservedYouTubeVideo, YouTubeResearchService } from "./youtubeResearchService";
-import { renderSceneCard } from "../utils/ppmRenderer";
 import { VoiceoverService } from "./voiceoverService";
 import { AudioService } from "./audioService";
+import { MotionGraphicsEngine, MotionSceneSpec } from "./motionGraphicsEngine";
 
 const execFileAsync = promisify(execFile);
 const AVATAR_STYLE = "An original, friendly stylized 3D Indian tech educator avatar, warm expression, consistent face, short dark hair, teal hoodie, clean modern studio. Keep the same identity, outfit and visual style across every clip. Do not imitate a real creator or a copyrighted character.";
@@ -24,76 +25,59 @@ function buildScenePrompt(scene: { visualDescription: string; voiceoverHinglish?
   return `${AVATAR_STYLE}\nVertical 9:16 short-form video, 720p, about 6 seconds. Scene ${number} of a coherent educational Short titled "${title}". ${scene.visualDescription}. Medium close-up, clear expressive gestures, camera movement and lighting suited to this exact scene. Use the same warm medium-pitch Indian male Hinglish voice in every clip, with clear pronunciation and consistent loudness. The avatar speaks this exact line naturally with accurate lip-sync and clean voice audio: "${dialogue}". Do not add other spoken words, claims, numbers, logos, or watermarks. Use simple uncluttered background. On-screen text, if legible, should be limited to: "${scene.onScreenText}".`;
 }
 
+async function getMediaDuration(ffmpegBinary: string, filePath: string): Promise<number> {
+  try {
+    const { stderr } = await execFileAsync(ffmpegBinary, ["-hide_banner", "-i", filePath]);
+    const match = stderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+    if (match) {
+      return parseFloat(match[1]) * 3600 + parseFloat(match[2]) * 60 + parseFloat(match[3]);
+    }
+  } catch (err: any) {
+    if (err?.stderr) {
+      const match = err.stderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+      if (match) {
+        return parseFloat(match[1]) * 3600 + parseFloat(match[2]) * 60 + parseFloat(match[3]);
+      }
+    }
+  }
+  return 5.0;
+}
+
 async function renderNativeSceneClip(
   ffmpegBinary: string,
   workDir: string,
   sceneNumber: number,
   totalScenes: number,
   scene: { visualDescription: string; voiceoverHinglish?: string; voiceoverHindi: string; onScreenText: string; durationSeconds?: number },
-  reelTitle: string
+  reelTitle: string,
+  voiceId = "hi-IN-MadhurNeural"
 ): Promise<Buffer> {
-  const duration = scene.durationSeconds || 6;
-  const ppmPath = path.join(workDir, `scene-frame-${sceneNumber}.ppm`);
-  const voicePath = path.join(workDir, `scene-voice-${sceneNumber}.mp3`);
-  const musicPath = path.join(workDir, `scene-music-${sceneNumber}.wav`);
-  const clipPath = path.join(workDir, `native-scene-${sceneNumber}.mp4`);
+  const voiceText = scene.voiceoverHinglish || scene.voiceoverHindi || scene.onScreenText || "";
+  const { buffer: voiceBuffer, durationSeconds } = await VoiceoverService.generate(voiceText, { voice: voiceId });
 
-  const cardBuffer = renderSceneCard({
+  // Map scene to professional motion theme
+  let theme: MotionSceneSpec["theme"] = "phone-demo";
+  if (sceneNumber === 1) theme = "phone-demo";
+  else if (sceneNumber === 2) theme = "comparison";
+  else if (sceneNumber === 3) theme = "data-flow";
+  else if (sceneNumber === totalScenes) theme = "cta-outro";
+  else theme = "feature-cards";
+
+  const spec: MotionSceneSpec = {
     sceneNumber,
     totalScenes,
-    reelTitle,
-    onScreenText: scene.onScreenText || scene.visualDescription,
-    voiceoverText: scene.voiceoverHinglish || scene.voiceoverHindi,
+    durationSeconds,
+    theme,
+    headline: scene.onScreenText || reelTitle,
+    subheadline: scene.visualDescription.slice(0, 90),
+    badgeText: `SCENE ${sceneNumber} OF ${totalScenes}`,
+    voiceoverText: voiceText,
+    onScreenText: scene.onScreenText,
+    analogyPair: { left: "Traditional Manual", right: "AI & Digital System" },
     handle: "@learnwithavee",
-  });
+  };
 
-  await fs.writeFile(ppmPath, cardBuffer);
-
-  // 1. Generate real Hindi/Hinglish spoken voiceover audio!
-  const voiceText = scene.voiceoverHinglish || scene.voiceoverHindi || scene.onScreenText || "";
-  const voiceBuffer = await VoiceoverService.generate(voiceText, "hi");
-
-  // 2. Generate original ambient lo-fi melodic tech background music bed
-  const musicBuffer = AudioService.generateAmbientBed(duration + 4);
-  await fs.writeFile(musicPath, musicBuffer);
-
-  const ffmpegArgs: string[] = [
-    "-hide_banner", "-loglevel", "error", "-y",
-    "-loop", "1", "-i", ppmPath,
-  ];
-
-  if (voiceBuffer && voiceBuffer.length > 1000) {
-    await fs.writeFile(voicePath, voiceBuffer);
-    ffmpegArgs.push(
-      "-i", voicePath,
-      "-i", musicPath,
-      "-filter_complex",
-      "[0:v]scale=720:1280[vout];[1:a]volume=1.45,bass=g=3:f=180[voice];[2:a]volume=0.18[music];[voice][music]amix=inputs=2:duration=first[aout]",
-      "-map", "[vout]", "-map", "[aout]",
-      "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
-      "-c:a", "aac", "-b:a", "128k",
-      "-shortest",
-      clipPath
-    );
-  } else {
-    ffmpegArgs.push(
-      "-i", musicPath,
-      "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
-      "-c:a", "aac", "-b:a", "128k",
-      "-t", String(duration),
-      clipPath
-    );
-  }
-
-  await execFileAsync(ffmpegBinary, ffmpegArgs, { timeout: 60_000 });
-
-  await Promise.all([
-    fs.unlink(ppmPath).catch(() => undefined),
-    fs.unlink(voicePath).catch(() => undefined),
-    fs.unlink(musicPath).catch(() => undefined),
-  ]);
-
-  return fs.readFile(clipPath);
+  return MotionGraphicsEngine.renderSceneClip(ffmpegBinary, workDir, spec, voiceBuffer, durationSeconds);
 }
 
 async function assembleClipsWithTransitions(
@@ -108,16 +92,22 @@ async function assembleClipsWithTransitions(
   }
 
   try {
+    const durations: number[] = [];
+    for (const clip of clipPaths) {
+      durations.push(await getMediaDuration(ffmpegBinary, clip));
+    }
+
     const inputs: string[] = [];
     clipPaths.forEach((clip) => inputs.push("-i", clip));
 
     const transitions = ["slideleft", "smoothup", "fade", "wiperight"];
     const vFilters: string[] = [];
     const aFilters: string[] = [];
+    const transDur = 0.5;
 
     let lastV = "0:v";
     let lastA = "0:a";
-    let curOffset = 5.5;
+    let curOffset = Math.max(0.5, durations[0] - transDur);
 
     for (let i = 1; i < clipPaths.length; i++) {
       const nextV = `${i}:v`;
@@ -126,12 +116,14 @@ async function assembleClipsWithTransitions(
       const outV = i === clipPaths.length - 1 ? "vout" : `v0${i}`;
       const outA = i === clipPaths.length - 1 ? "aout" : `a0${i}`;
 
-      vFilters.push(`[${lastV}][${nextV}]xfade=transition=${trans}:duration=0.5:offset=${curOffset.toFixed(1)}[${outV}]`);
-      aFilters.push(`[${lastA}][${nextA}]acrossfade=d=0.5[${outA}]`);
+      vFilters.push(`[${lastV}][${nextV}]xfade=transition=${trans}:duration=${transDur}:offset=${curOffset.toFixed(2)}[${outV}]`);
+      aFilters.push(`[${lastA}][${nextA}]acrossfade=d=${transDur}[${outA}]`);
 
       lastV = outV;
       lastA = outA;
-      curOffset += 5.5;
+      if (i < clipPaths.length - 1) {
+        curOffset += Math.max(0.5, durations[i] - transDur);
+      }
     }
 
     const filterComplex = [...vFilters, ...aFilters].join(";");
@@ -140,7 +132,7 @@ async function assembleClipsWithTransitions(
       ...inputs,
       "-filter_complex", filterComplex,
       "-map", "[vout]", "-map", "[aout]",
-      "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
+      "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p",
       "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
       outputPath,
     ], { timeout: 3 * 60_000, maxBuffer: 5 * 1024 * 1024 });
@@ -154,7 +146,7 @@ async function assembleClipsWithTransitions(
   await fs.writeFile(concatList, clipPaths.map((file) => `file '${path.resolve(file).replace(/\\/g, "/").replace(/'/g, "\\'")}'`).join("\n"), "utf8");
   await execFileAsync(ffmpegBinary, [
     "-hide_banner", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i", concatList,
-    "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
+    "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p",
     "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", outputPath,
   ], { timeout: 5 * 60_000, maxBuffer: 5 * 1024 * 1024 });
 }
@@ -200,11 +192,21 @@ export class CreatorWorkflowService {
     );
   }
 
-  static async start(userId: string, idempotencyKey: string, requestedTopic = "", niche = env.CREATOR_NICHE): Promise<ICreatorWorkflow> {
+  static async start(
+    userId: string,
+    idempotencyKey: string,
+    requestedTopic = "",
+    niche = env.CREATOR_NICHE,
+    voiceId = "hi-IN-MadhurNeural",
+    videoStyle = "motion-graphics"
+  ): Promise<ICreatorWorkflow> {
     const prior = await CreatorWorkflow.findOne({ userId, idempotencyKey });
     if (prior) return prior;
     try {
-      return await CreatorWorkflow.create({ userId, idempotencyKey, niche, requestedTopic, status: "queued", stageMessage: "Queued" });
+      return await CreatorWorkflow.create({
+        userId, idempotencyKey, niche, requestedTopic, voiceId, videoStyle,
+        status: "queued", stageMessage: "Queued"
+      });
     } catch (error: any) {
       if (error?.code === 11000) {
         const raced = await CreatorWorkflow.findOne({ userId, idempotencyKey });
@@ -304,7 +306,7 @@ export class CreatorWorkflowService {
         await this.update(jobId, { stageMessage: `Generating scene clip ${index + 1} of ${scenes.length}` });
         let clip: Buffer | null = null;
 
-        if (ai) {
+        if (job.videoStyle === "ai-avatar" && ai) {
           try {
             clip = await generateVideoClip(ai, prompts[index].prompt);
           } catch (clipErr: any) {
@@ -313,7 +315,7 @@ export class CreatorWorkflowService {
         }
 
         if (!clip) {
-          clip = await renderNativeSceneClip(ffmpegPath, workDir, index + 1, scenes.length, scene, generated.reelTitle);
+          clip = await renderNativeSceneClip(ffmpegPath, workDir, index + 1, scenes.length, scene, generated.reelTitle, job.voiceId);
         }
 
         if (clip.length < 10_000 || Buffer.from(clip.subarray(4, 8)).toString("ascii") !== "ftyp") {
@@ -342,25 +344,28 @@ export class CreatorWorkflowService {
         title: generated.reelTitle, topic, associatedScriptId: String(script._id), campaign: "Creator Workflow", requirePersistent: true,
       });
 
-      // Render 9:16 high-contrast Cover Image (Thumbnail)
+      // Render 9:16 high-contrast Vector Cover Image (Thumbnail)
       let coverUrl = "";
       let coverAssetId: any = undefined;
       try {
-        const coverPpm = path.join(workDir, "cover.ppm");
-        const coverJpg = path.join(workDir, "cover.jpg");
-        const coverCardBuffer = renderSceneCard({
+        const coverSpec: MotionSceneSpec = {
           sceneNumber: 1,
           totalScenes: 1,
-          reelTitle: generated.reelTitle,
-          onScreenText: generated.openingHook || topic,
-          voiceoverText: "LEARN WITH AVEE • NEW SHORT",
+          durationSeconds: 5,
+          theme: "phone-demo",
+          headline: generated.reelTitle,
+          subheadline: topic || generated.openingHook,
+          badgeText: "NEW SHORT",
+          voiceoverText: "",
+          onScreenText: generated.openingHook,
           handle: "@learnwithavee",
-        });
-        await fs.writeFile(coverPpm, coverCardBuffer);
-        await execFileAsync(ffmpegPath, ["-hide_banner", "-loglevel", "error", "-y", "-i", coverPpm, "-q:v", "2", coverJpg]);
-        const coverBuffer = await fs.readFile(coverJpg);
+        };
+        const coverSvg = MotionGraphicsEngine.renderFrame(coverSpec, 0.5, 720, 1280);
+        const resvg = new Resvg(coverSvg, { fitTo: { mode: "width", value: 720 } });
+        const coverPng = resvg.render().asPng();
+
         const coverAsset = await StorageService.saveMedia({
-          originalName: "cover.jpg", buffer: coverBuffer, mimeType: "image/jpeg", sizeBytes: coverBuffer.length,
+          originalName: "cover.png", buffer: coverPng, mimeType: "image/png", sizeBytes: coverPng.length,
           title: `${generated.reelTitle} — Cover Image`, topic, associatedScriptId: String(script._id), campaign: "Creator Workflow Cover", requirePersistent: true,
         });
         coverUrl = coverAsset.url;

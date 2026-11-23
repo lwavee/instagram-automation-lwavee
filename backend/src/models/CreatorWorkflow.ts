@@ -9,6 +9,8 @@ export interface ICreatorWorkflow extends Document {
   requestedTopic: string;
   topic: string;
   topicRationale: string;
+  videoStyle?: string;
+  voiceId?: string;
   status: CreatorWorkflowStatus;
   stageMessage: string;
   scriptId?: mongoose.Types.ObjectId;
@@ -31,6 +33,8 @@ const schema = new Schema<ICreatorWorkflow>({
   requestedTopic: { type: String, default: "" },
   topic: { type: String, default: "" },
   topicRationale: { type: String, default: "" },
+  videoStyle: { type: String, default: "motion-graphics" },
+  voiceId: { type: String, default: "hi-IN-MadhurNeural" },
   status: { type: String, enum: ["queued", "researching", "scripting", "generating", "assembling", "completed", "failed"], default: "queued", index: true },
   stageMessage: { type: String, default: "Queued" },
   scriptId: { type: Schema.Types.ObjectId, ref: "GeneratedScript" },

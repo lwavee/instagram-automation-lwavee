@@ -189,28 +189,57 @@ export class MotionGraphicsEngine {
     // Scanning laser moves back and forth
     const scanY = 160 + Math.sin(t * Math.PI * 4) * 80;
 
-    const screenUI = `
-      <text x="12" y="28" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#0F172A">Scan to Order</text>
-      <text x="12" y="52" font-family="Arial, sans-serif" font-size="13" fill="#64748B">Instant digital menu on your phone</text>
-      
-      <!-- QR Card -->
-      <rect x="24" y="80" width="280" height="280" rx="28" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="2"/>
-      <!-- QR Symbol simulation -->
-      <rect x="64" y="120" width="200" height="200" rx="16" fill="#1E293B"/>
-      <rect x="80" y="136" width="60" height="60" rx="6" fill="#FFFFFF"/>
-      <rect x="94" y="150" width="32" height="32" rx="4" fill="#1E293B"/>
-      <rect x="188" y="136" width="60" height="60" rx="6" fill="#FFFFFF"/>
-      <rect x="202" y="150" width="32" height="32" rx="4" fill="#1E293B"/>
-      <rect x="80" y="244" width="60" height="60" rx="6" fill="#FFFFFF"/>
-      <rect x="94" y="258" width="32" height="32" rx="4" fill="#1E293B"/>
+    const isCyber = /hack|cyber|secur|protect|shield|firewall/i.test(`${spec.headline} ${spec.subheadline} ${spec.badgeText}`);
 
-      <!-- Scanning Laser -->
-      ${MotionComponents.scanBeam(40, scanY, 288)}
+    let screenUI = "";
+    if (isCyber) {
+      screenUI = `
+        <text x="12" y="28" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#0F172A">Cyber Defense</text>
+        <text x="12" y="52" font-family="Arial, sans-serif" font-size="13" fill="#64748B">System Security &amp; Protection</text>
+        
+        <!-- Shield & Security Card -->
+        <rect x="24" y="80" width="280" height="280" rx="28" fill="#0F172A" stroke="#2563EB" stroke-width="2"/>
+        
+        <!-- Animated Shield Icon -->
+        <g transform="translate(164, 190) scale(1.4)">
+          <path d="M0 -40 L30 -25 L30 10 C30 30 0 45 0 45 C0 45 -30 30 -30 10 L-30 -25 Z" fill="#1E293B" stroke="#38BDF8" stroke-width="3" filter="url(#glow-blue)"/>
+          <path d="M-8 0 L-2 6 L10 -6" fill="none" stroke="#22C55E" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </g>
+        
+        <text x="164" y="285" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="#F8FAFC" text-anchor="middle">Firewall Active</text>
+        <text x="164" y="310" font-family="Arial, sans-serif" font-size="12" fill="#94A3B8" text-anchor="middle">Vulnerability Scanned: Safe</text>
 
-      <!-- Bottom Card Button -->
-      <rect x="24" y="420" width="280" height="56" rx="18" fill="#2563EB"/>
-      <text x="164" y="455" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="#FFFFFF" text-anchor="middle">Open Digital Menu</text>
-    `;
+        <!-- Scanning Laser -->
+        ${MotionComponents.scanBeam(40, scanY, 288)}
+
+        <!-- Bottom Status Button -->
+        <rect x="24" y="420" width="280" height="56" rx="18" fill="#10B981"/>
+        <text x="164" y="455" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="#FFFFFF" text-anchor="middle">System Protected</text>
+      `;
+    } else {
+      screenUI = `
+        <text x="12" y="28" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#0F172A">Scan to Order</text>
+        <text x="12" y="52" font-family="Arial, sans-serif" font-size="13" fill="#64748B">Instant digital menu on your phone</text>
+        
+        <!-- QR Card -->
+        <rect x="24" y="80" width="280" height="280" rx="28" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="2"/>
+        <!-- QR Symbol simulation -->
+        <rect x="64" y="120" width="200" height="200" rx="16" fill="#1E293B"/>
+        <rect x="80" y="136" width="60" height="60" rx="6" fill="#FFFFFF"/>
+        <rect x="94" y="150" width="32" height="32" rx="4" fill="#1E293B"/>
+        <rect x="188" y="136" width="60" height="60" rx="6" fill="#FFFFFF"/>
+        <rect x="202" y="150" width="32" height="32" rx="4" fill="#1E293B"/>
+        <rect x="80" y="244" width="60" height="60" rx="6" fill="#FFFFFF"/>
+        <rect x="94" y="258" width="32" height="32" rx="4" fill="#1E293B"/>
+
+        <!-- Scanning Laser -->
+        ${MotionComponents.scanBeam(40, scanY, 288)}
+
+        <!-- Bottom Card Button -->
+        <rect x="24" y="420" width="280" height="56" rx="18" fill="#2563EB"/>
+        <text x="164" y="455" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="#FFFFFF" text-anchor="middle">Open Digital Menu</text>
+      `;
+    }
 
     return `
       <svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">

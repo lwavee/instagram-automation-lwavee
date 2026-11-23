@@ -532,7 +532,7 @@ export class MotionGraphicsEngine {
       // Ignore EPIPE/EOF on closed pipe to prevent Node process termination
     });
 
-    // Stream rendered vector PNG frames into FFmpeg with backpressure handling
+    // Stream rendered vector PNG frames into FFmpeg with backpressure handling & event-loop yielding
     for (let frame = 0; frame < totalFrames; frame++) {
       if (ffmpeg.killed || ffmpeg.exitCode !== null) break;
       const t = frame / totalFrames;
@@ -546,6 +546,9 @@ export class MotionGraphicsEngine {
           ffmpeg.stdin.once("drain", () => resolve());
         });
       }
+
+      // Yield event loop every frame so Render HTTP health checks (/api/health) stay responsive
+      await new Promise<void>((resolve) => setImmediate(resolve));
     }
 
     if (ffmpeg.stdin.writable) {

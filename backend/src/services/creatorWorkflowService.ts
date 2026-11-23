@@ -13,6 +13,7 @@ import { AIService, AIServiceError } from "./aiService";
 import { StorageService } from "./storageService";
 import { ObservedYouTubeVideo, YouTubeResearchService } from "./youtubeResearchService";
 import { renderSceneCard } from "../utils/ppmRenderer";
+import { VoiceoverService } from "./voiceoverService";
 
 const execFileAsync = promisify(execFile);
 const AVATAR_STYLE = "An original, friendly stylized 3D Indian tech educator avatar, warm expression, consistent face, short dark hair, teal hoodie, clean modern studio. Keep the same identity, outfit and visual style across every clip. Do not imitate a real creator or a copyrighted character.";
@@ -32,6 +33,7 @@ async function renderNativeSceneClip(
 ): Promise<Buffer> {
   const duration = scene.durationSeconds || 6;
   const ppmPath = path.join(workDir, `scene-frame-${sceneNumber}.ppm`);
+  const voicePath = path.join(workDir, `scene-voice-${sceneNumber}.mp3`);
   const clipPath = path.join(workDir, `native-scene-${sceneNumber}.mp4`);
 
   const cardBuffer = renderSceneCard({
@@ -44,19 +46,43 @@ async function renderNativeSceneClip(
   });
 
   await fs.writeFile(ppmPath, cardBuffer);
-  const audioTone = 180 + sceneNumber * 35;
 
-  await execFileAsync(ffmpegBinary, [
+  // Generate real Hindi/Hinglish spoken voiceover audio!
+  const voiceText = scene.voiceoverHinglish || scene.voiceoverHindi || scene.onScreenText || "";
+  const voiceBuffer = await VoiceoverService.generate(voiceText, "hi");
+
+  const ffmpegArgs: string[] = [
     "-hide_banner", "-loglevel", "error", "-y",
     "-loop", "1", "-i", ppmPath,
-    "-f", "lavfi", "-i", `aevalsrc=sin(${audioTone}*2*PI*t)*exp(-t*0.25)*0.06:s=44100:d=${duration}`,
-    "-t", String(duration),
-    "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
-    "-c:a", "aac", "-b:a", "128k",
-    clipPath,
-  ], { timeout: 60_000 });
+  ];
 
-  await fs.unlink(ppmPath).catch(() => undefined);
+  if (voiceBuffer && voiceBuffer.length > 1000) {
+    await fs.writeFile(voicePath, voiceBuffer);
+    ffmpegArgs.push(
+      "-i", voicePath,
+      "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+      "-c:a", "aac", "-b:a", "128k",
+      "-shortest",
+      clipPath
+    );
+  } else {
+    const audioTone = 180 + sceneNumber * 35;
+    ffmpegArgs.push(
+      "-f", "lavfi", "-i", `aevalsrc=sin(${audioTone}*2*PI*t)*exp(-t*0.25)*0.06:s=44100:d=${duration}`,
+      "-t", String(duration),
+      "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+      "-c:a", "aac", "-b:a", "128k",
+      clipPath
+    );
+  }
+
+  await execFileAsync(ffmpegBinary, ffmpegArgs, { timeout: 60_000 });
+
+  await Promise.all([
+    fs.unlink(ppmPath).catch(() => undefined),
+    fs.unlink(voicePath).catch(() => undefined),
+  ]);
+
   return fs.readFile(clipPath);
 }
 
@@ -170,7 +196,7 @@ export class CreatorWorkflowService {
         targetFormat: "REEL",
         language: "Hinglish",
         targetDurationSeconds: 24,
-        customInstructions: `Create exactly 3 or 4 concise scenes for an AI-avatar vertical Short. Use this topic context; do not copy titles, scripts, framing, or wording. Do not invent claims or statistics. Keep the script practical and explain what viewers can verify. For every scene, visualDescription must describe a clear, feasible shot for one consistent friendly Indian tech educator avatar; voiceoverHinglish must contain the exact spoken line.\nSelected topic rationale: ${topicRationale}\nObserved notes:\n${sourceNotes}`,
+        customInstructions: `Create exactly 3 or 4 concise scenes for a high-retention educational Short. Use a captivating real-world analogy style (for example: explaining what an API or tech concept is using a restaurant customer, a waiter taking the order, and a kitchen preparing the food). Make the voiceover sound like an engaging, energetic Hindi/Hinglish tech creator. For every scene: visualDescription must describe the visual concept or scene metaphor; onScreenText must contain a punchy 2-4 word screen highlight or analogy label (e.g. 'Waiter = API' or 'Kitchen = Backend'); voiceoverHinglish must contain the exact, natural spoken Hindi/Hinglish line for the voiceover.\nSelected topic rationale: ${topicRationale}\nObserved notes:\n${sourceNotes}`,
       });
       const scenes = generated.scenes.slice(0, 4);
       if (scenes.length < 2) throw new Error("AI provider returned too few scenes. The workflow stopped before clip generation.");

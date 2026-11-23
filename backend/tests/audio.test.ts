@@ -7,8 +7,8 @@ describe("AudioService", () => {
     const wav = AudioService.generateAmbientBed(duration);
     expect(wav).toBeInstanceOf(Buffer);
     expect(wav.length).toBeGreaterThan(44);
-    expect(wav.subarray(0, 4).toString("ascii")).toBe("RIFF");
-    expect(wav.subarray(8, 12).toString("ascii")).toBe("WAVE");
+    expect(Buffer.from(wav.subarray(0, 4)).toString("ascii")).toBe("RIFF");
+    expect(Buffer.from(wav.subarray(8, 12)).toString("ascii")).toBe("WAVE");
 
     // Sample rate check: 44100
     const sampleRate = wav.readUInt32LE(24);

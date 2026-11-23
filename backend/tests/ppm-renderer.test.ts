@@ -10,7 +10,7 @@ describe("PPM Canvas & Card Renderer", () => {
 
     const buffer = canvas.toBuffer();
     expect(buffer).toBeInstanceOf(Buffer);
-    const header = buffer.subarray(0, 15).toString("ascii");
+    const header = Buffer.from(buffer.subarray(0, 15)).toString("ascii");
     expect(header).toContain("P6");
     expect(header).toContain("720 1280");
     expect(buffer.length).toBe(720 * 1280 * 3 + header.split("\n").slice(0, 3).join("\n").length + 1);
@@ -29,7 +29,7 @@ describe("PPM Canvas & Card Renderer", () => {
 
       expect(card).toBeInstanceOf(Buffer);
       expect(card.length).toBeGreaterThan(2_700_000);
-      expect(card.subarray(0, 3).toString("ascii")).toBe("P6\n");
+      expect(Buffer.from(card.subarray(0, 3)).toString("ascii")).toBe("P6\n");
     }
   });
 });

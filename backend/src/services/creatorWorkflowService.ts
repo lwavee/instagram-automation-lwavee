@@ -316,7 +316,7 @@ export class CreatorWorkflowService {
           clip = await renderNativeSceneClip(ffmpegPath, workDir, index + 1, scenes.length, scene, generated.reelTitle);
         }
 
-        if (clip.length < 10_000 || clip.subarray(4, 8).toString("ascii") !== "ftyp") {
+        if (clip.length < 10_000 || Buffer.from(clip.subarray(4, 8)).toString("ascii") !== "ftyp") {
           throw new Error(`Scene ${index + 1} did not produce a valid MP4 clip.`);
         }
 
@@ -335,7 +335,7 @@ export class CreatorWorkflowService {
       const outputPath = path.join(workDir, "learn-with-avee-short.mp4");
       await assembleClipsWithTransitions(ffmpegPath, workDir, clipPaths, outputPath);
       const video = await fs.readFile(outputPath);
-      if (video.length < 10_000 || video.subarray(4, 8).toString("ascii") !== "ftyp") throw new Error("FFmpeg did not produce a valid MP4 output.");
+      if (video.length < 10_000 || Buffer.from(video.subarray(4, 8)).toString("ascii") !== "ftyp") throw new Error("FFmpeg did not produce a valid MP4 output.");
 
       const asset = await StorageService.saveMedia({
         originalName: "learn-with-avee-short.mp4", buffer: video, mimeType: "video/mp4", sizeBytes: video.length,
